@@ -39,9 +39,6 @@ function PlayScreen() {
   const location = useLocation();
   const userDataRecieved = location.state || {};
 
-  const ENDPOINT = "https://skribblay-you.onrender.com/";
-  const ENDPOINT_LOCAL = "http://localhost:3001/";
-
   // ── Init socket ───────────────────────────────────────────────────────────
   useEffect(() => {
     let us = localStorage.getItem("username");
@@ -53,9 +50,7 @@ function PlayScreen() {
       return;
     }
 
-    const newSocket = io.connect(
-      process.env.REACT_APP_NODE_ENV === "production" ? ENDPOINT : ENDPOINT_LOCAL
-    );
+    const newSocket = io(ENDPOINT);
     setSocket(newSocket);
 
     window.onbeforeunload = () => localStorage.removeItem("username");

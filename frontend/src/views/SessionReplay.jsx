@@ -2,6 +2,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useParams, useLocation, Link } from "react-router-dom";
 import { jsPDF } from "jspdf";
+import { API_BASE_URL } from "../config";
 import "../App.css";
 
 export default function SessionReplay() {
@@ -17,7 +18,7 @@ export default function SessionReplay() {
   // Load session if not passed via state
   useEffect(() => {
     if (session) return;
-    fetch(`http://localhost:3001/api/sessions/${code}`)
+    fetch(`${API_BASE_URL}/api/sessions/${code}`)
       .then((r) => { if (!r.ok) throw new Error("Session not found"); return r.json(); })
       .then((data) => { setSession(data); setLoading(false); })
       .catch((e) => { setError(e.message); setLoading(false); });

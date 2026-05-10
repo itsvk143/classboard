@@ -9,11 +9,11 @@ import {
 } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { io } from "socket.io-client";
+import { SOCKET_ENDPOINT } from "../config";
 import { jsPDF } from "jspdf";
 import "../App.css";
 
-const ENDPOINT_LOCAL = "http://localhost:3001/";
-const ENDPOINT_PROD  = "https://skribblay-you.onrender.com/";
+const ENDPOINT = SOCKET_ENDPOINT;
 const COLORS = [
   "#000000", "#ffffff", "#ef4444", "#3b82f6", "#22c55e", "#ec4899",
 ];
@@ -153,8 +153,7 @@ export default function ClassroomScreen() {
   useEffect(() => {
     if (!name || !action) { navigate("/"); return; }
 
-    const endpoint = process.env.REACT_APP_NODE_ENV === "production" ? ENDPOINT_PROD : ENDPOINT_LOCAL;
-    const sock = io.connect(endpoint);
+    const sock = io(ENDPOINT);
     setSocket(sock);
 
     sock.on("connect", () => {

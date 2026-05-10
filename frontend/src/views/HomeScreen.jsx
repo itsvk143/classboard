@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from "react";
 import "../App.css";
 import { useNavigate } from "react-router-dom";
+import { API_BASE_URL } from "../config";
 
 const HomeScreen = () => {
   const navigate = useNavigate();
@@ -25,12 +26,12 @@ const HomeScreen = () => {
   const [modalInput, setModalInput] = useState("");
 
   const loadData = () => {
-    fetch("http://localhost:3001/api/sessions")
+    fetch(`${API_BASE_URL}/api/sessions`)
       .then((r) => r.json())
       .then((data) => { setSessions(data); setLoadingSessions(false); })
       .catch((e) => { console.error(e); setLoadingSessions(false); });
 
-    fetch("http://localhost:3001/api/folders")
+    fetch(`${API_BASE_URL}/api/folders`)
       .then(r => r.json())
       .then(data => setFolders(data))
       .catch(e => console.error(e));
@@ -54,7 +55,7 @@ const HomeScreen = () => {
   const deleteSession = (sessionCode, e) => {
     if (e) e.stopPropagation();
     if (!window.confirm(`Delete session "${sessionCode}"? This cannot be undone.`)) return;
-    fetch(`http://localhost:3001/api/sessions/${sessionCode}`, { method: "DELETE" })
+    fetch(`${API_BASE_URL}/api/sessions/${sessionCode}`, { method: "DELETE" })
       .then(() => {
         setSelectedSessions(prev => { const n = new Set(prev); n.delete(sessionCode); return n; });
         loadData();
@@ -64,7 +65,7 @@ const HomeScreen = () => {
   const bulkDelete = (codes) => {
     if (codes.length === 0) return;
     if (!window.confirm(`Delete ${codes.length} session(s)? This cannot be undone.`)) return;
-    fetch("http://localhost:3001/api/sessions/bulk-delete", {
+    fetch(`${API_BASE_URL}/api/sessions/bulk-delete`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ codes })
@@ -117,7 +118,7 @@ const HomeScreen = () => {
   const handleDeleteFolder = (id, e) => {
     if (e) e.preventDefault();
     if (!window.confirm("Delete this folder? Sessions inside will be unorganized.")) return;
-    fetch(`http://localhost:3001/api/folders/${id}`, { method: "DELETE" }).then(() => loadData());
+    fetch(`${API_BASE_URL}/api/folders/${id}`, { method: "DELETE" }).then(() => loadData());
   };
 
   const handleModalSubmit = () => {
@@ -127,7 +128,7 @@ const HomeScreen = () => {
 
     if (type === "CREATE_FOLDER") {
       if (!val) { setModalState(null); return; }
-      fetch("http://localhost:3001/api/folders", {
+      fetch(`${API_BASE_URL}/api/folders`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: val })
@@ -135,7 +136,7 @@ const HomeScreen = () => {
     } else if (type === "RENAME_FOLDER") {
       const { id, currentName } = modalState;
       if (!val || val === currentName) { setModalState(null); return; }
-      fetch(`http://localhost:3001/api/folders/${id}`, {
+      fetch(`${API_BASE_URL}/api/folders/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: val })
@@ -143,14 +144,14 @@ const HomeScreen = () => {
     } else if (type === "MOVE_SESSION") {
       const { code: sessionCode } = modalState;
       const doMove = () => {
-        fetch(`http://localhost:3001/api/sessions/${sessionCode}/folder`, {
+        fetch(`${API_BASE_URL}/api/sessions/${sessionCode}/folder`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ folder: val })
         }).then(() => { loadData(); setModalState(null); });
       };
       if (val !== "" && !folders.find(f => f.name === val)) {
-        fetch("http://localhost:3001/api/folders", {
+        fetch(`${API_BASE_URL}/api/folders`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ name: val })
@@ -199,7 +200,6 @@ const HomeScreen = () => {
       <p className="home-tagline">Real-time collaborative whiteboard for online classes</p>
 
       <div className="home-split-layout">
-        {/* LEFT: Past Sessions */}
         <div className="home-left-panel">
           <div style={{ display: "flex", alignItems: "center", gap: "16px", marginBottom: "20px" }}>
             <h2 style={{ color: "var(--text)", fontSize: "20px", margin: 0 }}>📋 Past Sessions</h2>
@@ -244,7 +244,6 @@ const HomeScreen = () => {
                       }}
                       onClick={() => { if (!isExpanded) toggleFolder(folderName); }}
                     >
-                      {/* ── Folder Header ─────────────────────────────── */}
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: isExpanded ? "1px solid var(--border)" : "none", paddingBottom: isExpanded ? "12px" : "0", marginBottom: isExpanded ? "16px" : "0", gap: "8px" }}>
                         <h3
                           onClick={(e) => { e.stopPropagation(); toggleFolder(folderName); }}
@@ -256,7 +255,6 @@ const HomeScreen = () => {
                         </h3>
 
                         <div style={{ display: "flex", gap: "6px", alignItems: "center", flexShrink: 0 }} onClick={e => e.stopPropagation()}>
-                          {/* Unorganized: Select All + bulk delete buttons */}
                           {isUnorganized && isExpanded && folderCodes.length > 0 && (
                             <>
                               <button
@@ -312,7 +310,6 @@ const HomeScreen = () => {
                         </div>
                       </div>
 
-                      {/* ── Folder Contents ───────────────────────────── */}
                       {isExpanded && (
                         groupedSessions[folderName].length === 0 ? (
                           <p style={{ color: "var(--text3)", fontSize: "14px", fontStyle: "italic", textAlign: "center", padding: "20px 0" }}>Empty folder</p>
@@ -334,7 +331,6 @@ const HomeScreen = () => {
                                     transition: "border 0.15s, background 0.15s"
                                   }}
                                 >
-                                  {/* Checkbox — always show in Unorganized */}
                                   {isUnorganized && (
                                     <input
                                       type="checkbox"
@@ -391,7 +387,6 @@ const HomeScreen = () => {
           )}
         </div>
 
-        {/* RIGHT: Join/Create Form */}
         <div className="home-right-panel">
           <div className="home-card">
             <div className="home-tab-row">
@@ -445,7 +440,6 @@ const HomeScreen = () => {
         </div>
       </div>
 
-      {/* Modal */}
       {modalState && (
         <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }}>
           <div style={{ background: "var(--bg)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg)", padding: "24px", width: "400px", maxWidth: "90%", boxShadow: "var(--shadow)" }}>

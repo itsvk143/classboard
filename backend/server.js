@@ -21,7 +21,7 @@ app.use(cors());
 app.use(express.json());
 
 // ─── CONFIG ──────────────────────────────────────────────────────────────────
-const TEACHER_EMAIL = (process.env.TEACHER_EMAIL || "itsvikash143@gmail").toLowerCase();
+const TEACHER_EMAIL = (process.env.TEACHER_EMAIL || "itsvikash143@gmail.com").toLowerCase();
 const SESSIONS_FILE = path.join(__dirname, "sessions.json");
 const FOLDERS_FILE = path.join(__dirname, "folders.json");
 const PORT = process.env.PORT || 3001;

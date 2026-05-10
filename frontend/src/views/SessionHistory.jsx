@@ -1,6 +1,7 @@
 // SessionHistory.jsx — View all past and active class sessions
 import React, { useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
+import { API_BASE_URL } from "../config";
 import "../App.css";
 
 export default function SessionHistory() {
@@ -10,7 +11,7 @@ export default function SessionHistory() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    fetch("http://localhost:3001/api/sessions")
+    fetch(`${API_BASE_URL}/api/sessions`)
       .then((r) => {
         if (!r.ok) throw new Error("Could not load sessions");
         return r.json();
