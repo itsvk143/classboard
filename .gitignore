@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+*/node_modules/
+**/node_modules/
+
+# Build outputs
+frontend/build/
+*/frontend/build/
+**/build/
+
+# Environment files
+.env
+**/.env
+
+# Session & data files
+backend/sessions.json
+backend/folders.json
+skribble-clone/backend/sessions.json
+skribble-clone/backend/folders.json
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
