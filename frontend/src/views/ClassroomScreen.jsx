@@ -104,7 +104,9 @@ export default function ClassroomScreen() {
   const lassoPath = useRef([]);
   const selCanvasRef = useRef(null);
   const selectionDivRef = useRef(null);
+  const selectionDivRef = useRef(null);
   const liveSelectionRef = useRef(null);
+  const [remotePreviews, setRemotePreviews] = useState({}); // { senderId: { tool, start, end, color, stroke } }
 
   useEffect(() => {
     liveSelectionRef.current = selection;
@@ -215,10 +217,19 @@ export default function ClassroomScreen() {
       ctx.beginPath();
     });
 
-    sock.on("draw-shape", ({ tool: shapeTool, start, end, color: shapeColor, stroke: shapeWidth }) => {
-      const ctx = ctxRef.current;
-      if (!ctx) return;
-      drawShape(ctx, shapeTool, start, end, shapeColor, shapeWidth);
+    sock.on("draw-shape", ({ tool: shapeTool, start, end, color: shapeColor, stroke: shapeWidth, isPreview, senderId }) => {
+      if (isPreview) {
+        setRemotePreviews(prev => ({ ...prev, [senderId]: { tool: shapeTool, start, end, color: shapeColor, stroke: shapeWidth } }));
+      } else {
+        setRemotePreviews(prev => {
+          const next = { ...prev };
+          delete next[senderId];
+          return next;
+        });
+        const ctx = ctxRef.current;
+        if (!ctx) return;
+        drawShape(ctx, shapeTool, start, end, shapeColor, shapeWidth);
+      }
     });
 
     sock.on("laser-move", ({ senderId, x, y, color }) => {
@@ -596,6 +607,13 @@ export default function ClassroomScreen() {
       emitStroke(lastPos.current.x, lastPos.current.y, pos.x, pos.y, tool);
     }
 
+    if (isShapeTool(tool) && isPainting.current && socket) {
+      // Throttled preview emit (every 3rd move approx)
+      if (Math.random() > 0.7) {
+        socket.emit("draw-shape", { code: sessionCode, tool, start: startPos.current, end: pos, color, stroke, isPreview: true });
+      }
+    }
+
     lastPos.current = pos;
   };
 
@@ -624,7 +642,7 @@ export default function ClassroomScreen() {
       ctxRef.current.putImageData(snapshotRef.current, 0, 0);
       drawShape(ctxRef.current, tool, startPos.current, pos, color, stroke);
       
-      // Sync the shape to others
+      // Sync the shape completion
       if (socket) {
         socket.emit("draw-shape", {
           code: sessionCode,
@@ -632,7 +650,8 @@ export default function ClassroomScreen() {
           start: startPos.current,
           end: pos,
           color,
-          stroke
+          stroke,
+          isPreview: false
         });
       }
     } else if (isSelectionTool(tool)) {
@@ -1336,14 +1355,38 @@ export default function ClassroomScreen() {
                     touchAction: "none",
                     display: "block"
                   }}
-                  onMouseDown={onDown}
-                  onMouseMove={onMove}
-                  onMouseUp={onUp}
-                  onMouseLeave={onUp}
-                  onTouchStart={onDown}
-                  onTouchMove={onMove}
-                  onTouchEnd={onUp}
+                  onPointerDown={onDown}
+                  onPointerMove={onMove}
+                  onPointerUp={onUp}
+                  onPointerLeave={onUp}
                 />
+                
+                {/* Real-time remote shape previews */}
+                <svg style={{ position: "absolute", top: 0, left: 0, width: 3000, height: 10000, pointerEvents: "none", zIndex: 40 }}>
+                  {Object.entries(remotePreviews).map(([id, p]) => {
+                    const x = p.start.x;
+                    const y = p.start.y;
+                    const w = p.end.x - x;
+                    const h = p.end.y - y;
+                    const color = p.color;
+                    const stroke = p.stroke;
+
+                    if (p.tool === TOOLS.RECTANGLE || p.tool === TOOLS.SQUARE) {
+                      const side = p.tool === TOOLS.SQUARE ? Math.max(Math.abs(w), Math.abs(h)) : null;
+                      const sw = side !== null ? (w < 0 ? -side : side) : w;
+                      const sh = side !== null ? (h < 0 ? -side : side) : h;
+                      return <rect key={id} x={sw < 0 ? x + sw : x} y={sh < 0 ? y + sh : y} width={Math.abs(sw)} height={Math.abs(sh)} fill="none" stroke={color} strokeWidth={stroke} strokeDasharray="5,5" />;
+                    }
+                    if (p.tool === TOOLS.CIRCLE) {
+                      const radius = Math.sqrt(w*w + h*h);
+                      return <circle key={id} cx={x} cy={y} r={radius} fill="none" stroke={color} strokeWidth={stroke} strokeDasharray="5,5" />;
+                    }
+                    if (p.tool === TOOLS.LINE) {
+                      return <line key={id} x1={x} y1={y} x2={p.end.x} y2={p.end.y} stroke={color} strokeWidth={stroke} strokeDasharray="5,5" />;
+                    }
+                    return null;
+                  })}
+                </svg>
               </div>
             </div>
           </div>
