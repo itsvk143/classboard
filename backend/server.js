@@ -311,6 +311,10 @@ io.on("connection", (socket) => {
     socket.to(code).emit("draw-stroke", { x0, y0, x1, y1, color, stroke, tool });
   });
 
+  socket.on("draw-shape", ({ code, tool, start, end, color, stroke }) => {
+    socket.to(code).emit("draw-shape", { tool, start, end, color, stroke });
+  });
+
   // ── Laser Pointer ───────────────────────────────────────────────────────
   socket.on("laser-move", ({ code, x, y, color }) => {
     socket.to(code).emit("laser-move", { senderId: socket.id, x, y, color });

@@ -215,6 +215,12 @@ export default function ClassroomScreen() {
       ctx.beginPath();
     });
 
+    sock.on("draw-shape", ({ tool: shapeTool, start, end, color: shapeColor, stroke: shapeWidth }) => {
+      const ctx = ctxRef.current;
+      if (!ctx) return;
+      drawShape(ctx, shapeTool, start, end, shapeColor, shapeWidth);
+    });
+
     sock.on("laser-move", ({ senderId, x, y, color }) => {
       setLasers(prev => ({ ...prev, [senderId]: { x, y, color } }));
     });
@@ -614,11 +620,22 @@ export default function ClassroomScreen() {
       return;
     }
 
-    if (isSelectionTool(tool)) {
+    if (isShapeTool(tool)) {
       ctxRef.current.putImageData(snapshotRef.current, 0, 0);
+      drawShape(ctxRef.current, tool, startPos.current, pos, color, stroke);
       
-      if (tool === TOOLS.SELECT) {
-        const pos = getPos(e);
+      // Sync the shape to others
+      if (socket) {
+        socket.emit("draw-shape", {
+          code: sessionCode,
+          tool,
+          start: startPos.current,
+          end: pos,
+          color,
+          stroke
+        });
+      }
+    } else if (isSelectionTool(tool)) {
         const w = Math.abs(pos.x - startPos.current.x);
         const h = Math.abs(pos.y - startPos.current.y);
         const x = Math.min(pos.x, startPos.current.x);
