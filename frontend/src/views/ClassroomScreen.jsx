@@ -1080,16 +1080,7 @@ export default function ClassroomScreen() {
             />
           </div>
 
-          <div style={{ display:"flex", alignItems:"center", gap:"8px" }}>
-            <span className={`classroom-role-pill ${role}`} title={role === "teacher" ? "Teacher" : "Student"}>
-              {role === "teacher" ? <Crown size={14} /> : <User size={14} />}
-            </span>
-            {sessionCode && (
-              <span className="classroom-code-badge" onClick={copyCode} title="Click to copy">
-                <Copy size={14} /> {sessionCode}
-              </span>
-            )}
-          </div>
+          {/* Role and Code moved to Sidebar */}
         </div>
 
         <div className="classroom-header-btns">
@@ -1163,6 +1154,17 @@ export default function ClassroomScreen() {
         {/* ── Sidebar ── */}
         {isSidebarOpen && (
           <aside className="classroom-sidebar">
+          <div className="sidebar-section" style={{ borderBottom: "1px solid var(--border)", padding: "16px 12px", display: "flex", alignItems: "center", gap: "10px", background: "rgba(255,255,255,0.03)" }}>
+             <span className={`classroom-role-pill ${role}`} style={{ margin: 0 }}>
+               {role === "teacher" ? <Crown size={16} /> : <User size={16} />}
+               <span style={{ marginLeft: "6px", fontSize: "12px", fontWeight: "600" }}>{role === "teacher" ? "Teacher" : "Student"}</span>
+             </span>
+             {sessionCode && (
+               <span className="classroom-code-badge" onClick={copyCode} style={{ margin: 0, padding: "4px 8px" }}>
+                 <Copy size={14} /> {sessionCode}
+               </span>
+             )}
+          </div>
           <div className="sidebar-section">
             <h3>Participants ({members.length})</h3>
             {members.map((m) => (
