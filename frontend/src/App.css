@@ -312,17 +312,30 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 20px;
+  padding: 8px 16px;
   background: var(--bg2);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
   gap: 12px;
-  flex-wrap: nowrap;
-  overflow-x: auto;
+  flex-wrap: wrap;
 }
-.classroom-header::-webkit-scrollbar {
-  height: 0px;
-  background: transparent;
+
+@media (max-width: 1024px) {
+  .classroom-header {
+    padding: 8px 12px;
+    gap: 10px;
+    justify-content: center;
+  }
+  .classroom-title-area {
+    width: 100%;
+    justify-content: center;
+    margin-bottom: 4px;
+  }
+  .toolbar {
+    width: 100%;
+    justify-content: center;
+    order: 3;
+  }
 }
 
 .classroom-title-area {
@@ -570,10 +583,11 @@ body {
 .toolbar {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 16px;
-  background: var(--bg2);
-  border-bottom: 1px solid var(--border);
+  gap: 6px;
+  padding: 6px 12px;
+  background: var(--bg3);
+  border-radius: 12px;
+  border: 1px solid var(--border);
   flex-shrink: 0;
   flex-wrap: wrap;
 }
@@ -582,6 +596,22 @@ body {
   display: flex;
   align-items: center;
   gap: 4px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+@media (max-width: 600px) {
+  .toolbar-group {
+    gap: 2px;
+  }
+  .tool-btn {
+    width: 30px;
+    height: 30px;
+  }
+  .color-swatch {
+    width: 18px;
+    height: 18px;
+  }
 }
 
 .toolbar-divider {

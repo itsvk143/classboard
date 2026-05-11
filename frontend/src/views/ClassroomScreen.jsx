@@ -574,35 +574,55 @@ export default function ClassroomScreen() {
       ctxRef.current.strokeStyle = color;
       ctxRef.current.lineWidth = stroke;
       ctxRef.current.globalAlpha = tool === TOOLS.HIGHLIGHTER ? 0.3 : 1.0;
-      ctxRef.current.lineTo(pos.x, pos.y);
+      
+      // Smoothing with Quadratic Curves for a premium feel
+      const midPoint = { x: (lastPos.current.x + pos.x) / 2, y: (lastPos.current.y + pos.y) / 2 };
+      ctxRef.current.quadraticCurveTo(lastPos.current.x, lastPos.current.y, midPoint.x, midPoint.y);
       ctxRef.current.stroke();
       ctxRef.current.globalAlpha = 1.0;
 
       emitStroke(lastPos.current.x, lastPos.current.y, pos.x, pos.y, tool);
-
-      ctxRef.current.beginPath();
-      ctxRef.current.moveTo(pos.x, pos.y);
     } else if (tool === TOOLS.ERASER) {
       ctxRef.current.strokeStyle = "#ffffff";
       ctxRef.current.lineWidth = stroke * 4;
       ctxRef.current.lineTo(pos.x, pos.y);
       ctxRef.current.stroke();
-
       emitStroke(lastPos.current.x, lastPos.current.y, pos.x, pos.y, tool);
-
-      ctxRef.current.beginPath();
-      ctxRef.current.moveTo(pos.x, pos.y);
     }
 
     lastPos.current = pos;
   };
 
   const onUp = (e) => {
+    if (!isPainting.current && !isDraggingSelection.current && !isResizingSelection.current && !isRotatingSelection.current) return;
+    
+    if (isDraggingSelection.current || isResizingSelection.current || isRotatingSelection.current) {
+      isDraggingSelection.current = false;
+      isResizingSelection.current = false;
+      isRotatingSelection.current = false;
+      if (liveSelectionRef.current) {
+        setSelection({ ...liveSelectionRef.current });
+      }
+      emitCanvas();
+      return;
+    }
+
+    isPainting.current = false;
+
+    if (tool === TOOLS.LASER) {
+      if (socket) socket.emit("laser-stop", { code: sessionCode });
+      return;
+    }
+
     if (isSelectionTool(tool)) {
-      if (isResizingSelection.current || isRotatingSelection.current || isDraggingSelection.current) {
-        isResizingSelection.current = false;
-        isRotatingSelection.current = false;
-        isDraggingSelection.current = false;
+      ctxRef.current.putImageData(snapshotRef.current, 0, 0);
+      
+      if (tool === TOOLS.SELECT) {
+        const pos = getPos(e);
+        const w = Math.abs(pos.x - startPos.current.x);
+        const h = Math.abs(pos.y - startPos.current.y);
+        const x = Math.min(pos.x, startPos.current.x);
+        const y = Math.min(pos.y, startPos.current.y);
         if (liveSelectionRef.current) {
           setSelection({ ...liveSelectionRef.current });
         }
@@ -1013,8 +1033,7 @@ export default function ClassroomScreen() {
             </div>
 
             <div className="toolbar-divider" />
-
-            <span style={{ fontSize:"12px", color:"var(--text3)" }}>Size</span>
+            <span style={{ fontSize:"11px", color:"var(--text3)", fontWeight:"600", textTransform:"uppercase" }}>Size</span>
             <input
               className="stroke-slider"
               type="range"
@@ -1023,17 +1042,8 @@ export default function ClassroomScreen() {
               value={stroke}
               onChange={(e) => setStroke(parseInt(e.target.value))}
             />
-            <div
-              style={{
-                width: Math.min(stroke * 2, 30) + "px",
-                height: Math.min(stroke * 2, 30) + "px",
-                borderRadius: "50%",
-                background: tool === TOOLS.ERASER ? "#94a3b8" : color,
-                flexShrink: 0,
-                border: "1px solid var(--border2)",
-              }}
-            />
           </div>
+
           <div style={{ display:"flex", alignItems:"center", gap:"8px" }}>
             <span className={`classroom-role-pill ${role}`} title={role === "teacher" ? "Teacher" : "Student"}>
               {role === "teacher" ? <Crown size={14} /> : <User size={14} />}
