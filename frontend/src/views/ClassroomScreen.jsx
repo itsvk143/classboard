@@ -33,7 +33,7 @@ const getWhiteBackgroundDataURL = (canvas, quality = 0.95, selection = null) => 
     selCanvas.width = selection.w;
     selCanvas.height = selection.h;
     selCanvas.getContext("2d").putImageData(selection.imgData, 0, 0);
-    
+
     ctx.save();
     const cx = selection.x + selection.w / 2;
     const cy = selection.y + selection.h / 2;
@@ -52,19 +52,19 @@ const getWhiteBackgroundDataURL = (canvas, quality = 0.95, selection = null) => 
 const AUTO_SAVE_INTERVAL = 60 * 1000;
 
 export default function ClassroomScreen() {
-  const location  = useLocation();
-  const navigate  = useNavigate();
-  const state     = location.state || {};
+  const location = useLocation();
+  const navigate = useNavigate();
+  const state = location.state || {};
   const { action, name, email, sessionTitle, code: joinCode, isTeacher } = state;
 
   const sessionCodeRef = useRef(joinCode || "");
 
   // Socket & session
-  const [socket, setSocket]         = useState(null);
+  const [socket, setSocket] = useState(null);
   const [sessionCode, setSessionCode] = useState(joinCode || "");
   const [sessionInfo, setSessionInfo] = useState(null);
-  const [members, setMembers]        = useState([]);
-  const [role, setRole]              = useState(isTeacher ? "teacher" : "student");
+  const [members, setMembers] = useState([]);
+  const [role, setRole] = useState(isTeacher ? "teacher" : "student");
   const [sessionEnded, setSessionEnded] = useState(false);
 
   useEffect(() => {
@@ -72,20 +72,20 @@ export default function ClassroomScreen() {
   }, [sessionCode]);
 
   // Chat
-  const [chats, setChats]         = useState([]);
+  const [chats, setChats] = useState([]);
   const [chatInput, setChatInput] = useState("");
   const chatEndRef = useRef(null);
 
   // Canvas
-  const canvasRef     = useRef(null);
-  const ctxRef        = useRef(null);
-  const [tool, setTool]     = useState(TOOLS.PEN);
-  const [color, setColor]   = useState("#000000");
+  const canvasRef = useRef(null);
+  const ctxRef = useRef(null);
+  const [tool, setTool] = useState(TOOLS.PEN);
+  const [color, setColor] = useState("#000000");
   const [stroke, setStroke] = useState(4);
-  const isPainting    = useRef(false);
-  const lastPos       = useRef(null);
-  const startPos      = useRef(null);
-  const snapshotRef   = useRef(null); // for straight line preview
+  const isPainting = useRef(false);
+  const lastPos = useRef(null);
+  const startPos = useRef(null);
+  const snapshotRef = useRef(null); // for straight line preview
   const [lasers, setLasers] = useState({});
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -103,7 +103,6 @@ export default function ClassroomScreen() {
   const dragOffset = useRef({ x: 0, y: 0 });
   const lassoPath = useRef([]);
   const selCanvasRef = useRef(null);
-  const selectionDivRef = useRef(null);
   const selectionDivRef = useRef(null);
   const liveSelectionRef = useRef(null);
   const [remotePreviews, setRemotePreviews] = useState({}); // { senderId: { tool, start, end, color, stroke } }
@@ -317,9 +316,9 @@ export default function ClassroomScreen() {
         y: (e.touches[0].clientY - rect.top) / zoom,
       };
     }
-    return { 
-      x: (e.clientX - rect.left) / zoom, 
-      y: (e.clientY - rect.top) / zoom 
+    return {
+      x: (e.clientX - rect.left) / zoom,
+      y: (e.clientY - rect.top) / zoom
     };
   };
 
@@ -346,7 +345,7 @@ export default function ClassroomScreen() {
     tempCanvas.width = sel.w;
     tempCanvas.height = sel.h;
     tempCanvas.getContext("2d").putImageData(sel.imgData, 0, 0);
-    
+
     ctxRef.current.save();
     const cx = sel.x + sel.w / 2;
     const cy = sel.y + sel.h / 2;
@@ -439,7 +438,7 @@ export default function ClassroomScreen() {
       const side = Math.max(Math.abs(w), Math.abs(h));
       ctx.rect(x, y, w < 0 ? -side : side, h < 0 ? -side : side);
     } else if (shapeTool === TOOLS.CIRCLE) {
-      const radius = Math.sqrt(w*w + h*h);
+      const radius = Math.sqrt(w * w + h * h);
       ctx.arc(x, y, radius, 0, 2 * Math.PI);
     } else if (shapeTool === TOOLS.TRIANGLE) {
       ctx.moveTo(x + w / 2, y);
@@ -447,7 +446,7 @@ export default function ClassroomScreen() {
       ctx.lineTo(x, y + h);
       ctx.closePath();
     } else if (shapeTool === TOOLS.HEXAGON) {
-      const radius = Math.sqrt(w*w + h*h);
+      const radius = Math.sqrt(w * w + h * h);
       for (let i = 0; i < 6; i++) {
         const angle = (Math.PI / 3) * i - (Math.PI / 2);
         const hx = x + radius * Math.cos(angle);
@@ -477,11 +476,11 @@ export default function ClassroomScreen() {
         const rAngle = -(selection.rotation || 0);
         const rxOffset = dx * Math.cos(rAngle) - dy * Math.sin(rAngle);
         const ryOffset = dx * Math.sin(rAngle) + dy * Math.cos(rAngle);
-        
+
         const s = selection.scale || 1;
         const scaledW = selection.w * s;
         const scaledH = selection.h * s;
-        
+
         if (rxOffset >= -scaledW / 2 && rxOffset <= scaledW / 2 && ryOffset >= -scaledH / 2 && ryOffset <= scaledH / 2) {
           isHit = true;
         }
@@ -530,8 +529,8 @@ export default function ClassroomScreen() {
         const sel = liveSelectionRef.current;
         const cx = sel.x + sel.w / 2;
         const cy = sel.y + sel.h / 2;
-        const currentDist = Math.sqrt((pos.x - cx)**2 + (pos.y - cy)**2);
-        const origDist = Math.sqrt((sel.w / 2)**2 + (sel.h / 2)**2);
+        const currentDist = Math.sqrt((pos.x - cx) ** 2 + (pos.y - cy) ** 2);
+        const origDist = Math.sqrt((sel.w / 2) ** 2 + (sel.h / 2) ** 2);
         const newScale = Math.max(0.1, currentDist / origDist);
         sel.scale = newScale;
         if (selectionDivRef.current) {
@@ -559,7 +558,7 @@ export default function ClassroomScreen() {
         ctxRef.current.setLineDash([5, 5]);
         ctxRef.current.strokeStyle = "#3b82f6";
         ctxRef.current.lineWidth = 1;
-        
+
         if (tool === TOOLS.SELECT) {
           ctxRef.current.strokeRect(startPos.current.x, startPos.current.y, pos.x - startPos.current.x, pos.y - startPos.current.y);
         } else if (tool === TOOLS.LASSO) {
@@ -591,7 +590,7 @@ export default function ClassroomScreen() {
       ctxRef.current.strokeStyle = color;
       ctxRef.current.lineWidth = stroke;
       ctxRef.current.globalAlpha = tool === TOOLS.HIGHLIGHTER ? 0.3 : 1.0;
-      
+
       // Smoothing with Quadratic Curves for a premium feel
       const midPoint = { x: (lastPos.current.x + pos.x) / 2, y: (lastPos.current.y + pos.y) / 2 };
       ctxRef.current.quadraticCurveTo(lastPos.current.x, lastPos.current.y, midPoint.x, midPoint.y);
@@ -619,7 +618,7 @@ export default function ClassroomScreen() {
 
   const onUp = (e) => {
     if (!isPainting.current && !isDraggingSelection.current && !isResizingSelection.current && !isRotatingSelection.current) return;
-    
+
     if (isDraggingSelection.current || isResizingSelection.current || isRotatingSelection.current) {
       isDraggingSelection.current = false;
       isResizingSelection.current = false;
@@ -641,7 +640,7 @@ export default function ClassroomScreen() {
     if (isShapeTool(tool)) {
       ctxRef.current.putImageData(snapshotRef.current, 0, 0);
       drawShape(ctxRef.current, tool, startPos.current, pos, color, stroke);
-      
+
       // Sync the shape completion
       if (socket) {
         socket.emit("draw-shape", {
@@ -655,515 +654,515 @@ export default function ClassroomScreen() {
         });
       }
     } else if (isSelectionTool(tool)) {
+      const w = Math.abs(pos.x - startPos.current.x);
+      const h = Math.abs(pos.y - startPos.current.y);
+      const x = Math.min(pos.x, startPos.current.x);
+      const y = Math.min(pos.y, startPos.current.y);
+      if (liveSelectionRef.current) {
+        setSelection({ ...liveSelectionRef.current });
+      }
+    } else if (isPainting.current) {
+      isPainting.current = false;
+      ctxRef.current.putImageData(snapshotRef.current, 0, 0);
+
+      if (tool === TOOLS.SELECT) {
+        const pos = getPos(e);
         const w = Math.abs(pos.x - startPos.current.x);
         const h = Math.abs(pos.y - startPos.current.y);
         const x = Math.min(pos.x, startPos.current.x);
         const y = Math.min(pos.y, startPos.current.y);
-        if (liveSelectionRef.current) {
-          setSelection({ ...liveSelectionRef.current });
+        if (w > 5 && h > 5) {
+          const imgData = ctxRef.current.getImageData(x, y, w, h);
+          setSelection({ type: TOOLS.SELECT, x, y, w, h, imgData, isCut: false });
         }
-      } else if (isPainting.current) {
-        isPainting.current = false;
-        ctxRef.current.putImageData(snapshotRef.current, 0, 0);
-        
-        if (tool === TOOLS.SELECT) {
-          const pos = getPos(e);
-          const w = Math.abs(pos.x - startPos.current.x);
-          const h = Math.abs(pos.y - startPos.current.y);
-          const x = Math.min(pos.x, startPos.current.x);
-          const y = Math.min(pos.y, startPos.current.y);
+      } else if (tool === TOOLS.LASSO) {
+        if (lassoPath.current.length > 2) {
+          const xs = lassoPath.current.map(p => p.x);
+          const ys = lassoPath.current.map(p => p.y);
+          const minX = Math.min(...xs);
+          const maxX = Math.max(...xs);
+          const minY = Math.min(...ys);
+          const maxY = Math.max(...ys);
+          const w = maxX - minX;
+          const h = maxY - minY;
+
           if (w > 5 && h > 5) {
-            const imgData = ctxRef.current.getImageData(x, y, w, h);
-            setSelection({ type: TOOLS.SELECT, x, y, w, h, imgData, isCut: false });
-          }
-        } else if (tool === TOOLS.LASSO) {
-          if (lassoPath.current.length > 2) {
-            const xs = lassoPath.current.map(p => p.x);
-            const ys = lassoPath.current.map(p => p.y);
-            const minX = Math.min(...xs);
-            const maxX = Math.max(...xs);
-            const minY = Math.min(...ys);
-            const maxY = Math.max(...ys);
-            const w = maxX - minX;
-            const h = maxY - minY;
-            
-            if (w > 5 && h > 5) {
-              const originalData = ctxRef.current.getImageData(minX, minY, w, h);
-              
-              const offCanvas = document.createElement("canvas");
-              offCanvas.width = w;
-              offCanvas.height = h;
-              const offCtx = offCanvas.getContext("2d");
-              
-              offCtx.beginPath();
-              lassoPath.current.forEach((p, i) => {
-                if (i === 0) offCtx.moveTo(p.x - minX, p.y - minY);
-                else offCtx.lineTo(p.x - minX, p.y - minY);
-              });
-              offCtx.closePath();
-              offCtx.clip();
-              
-              const srcCanvas = document.createElement("canvas");
-              srcCanvas.width = w;
-              srcCanvas.height = h;
-              srcCanvas.getContext("2d").putImageData(originalData, 0, 0);
-              
-              offCtx.drawImage(srcCanvas, 0, 0);
-              const maskedData = offCtx.getImageData(0, 0, w, h);
-              
-              setSelection({ type: TOOLS.LASSO, x: minX, y: minY, w, h, imgData: maskedData, isCut: false, path: [...lassoPath.current] });
-            }
+            const originalData = ctxRef.current.getImageData(minX, minY, w, h);
+
+            const offCanvas = document.createElement("canvas");
+            offCanvas.width = w;
+            offCanvas.height = h;
+            const offCtx = offCanvas.getContext("2d");
+
+            offCtx.beginPath();
+            lassoPath.current.forEach((p, i) => {
+              if (i === 0) offCtx.moveTo(p.x - minX, p.y - minY);
+              else offCtx.lineTo(p.x - minX, p.y - minY);
+            });
+            offCtx.closePath();
+            offCtx.clip();
+
+            const srcCanvas = document.createElement("canvas");
+            srcCanvas.width = w;
+            srcCanvas.height = h;
+            srcCanvas.getContext("2d").putImageData(originalData, 0, 0);
+
+            offCtx.drawImage(srcCanvas, 0, 0);
+            const maskedData = offCtx.getImageData(0, 0, w, h);
+
+            setSelection({ type: TOOLS.LASSO, x: minX, y: minY, w, h, imgData: maskedData, isCut: false, path: [...lassoPath.current] });
           }
         }
       }
-      return;
     }
-
-    if (!isPainting.current) return;
-    isPainting.current = false;
-
-    if (tool === TOOLS.LASER) {
-      if (socket) socket.emit("laser-stop", { code: sessionCode });
-      return;
-    }
-
-    if (isShapeTool(tool)) {
-      const pos = getPos(e);
-      ctxRef.current.putImageData(snapshotRef.current, 0, 0);
-      drawShape(ctxRef.current, tool, startPos.current, pos, color, stroke);
-      
-      if (tool === TOOLS.LINE) {
-        emitStroke(startPos.current.x, startPos.current.y, pos.x, pos.y, tool);
-      }
-    }
-
-    emitCanvas();
-    ctxRef.current.beginPath();
-    snapshotRef.current = null;
-  };
-
-  // ── Chat ─────────────────────────────────────────────────────────────────
-  const addSystemChat = (msg) => {
-    setChats((prev) => [...prev, { sender: "system", message: msg, role: "system", timestamp: new Date().toISOString() }]);
-  };
-
-  const sendChat = () => {
-    if (!chatInput.trim() || !socket) return;
-    socket.emit("session-chat", { code: sessionCode, message: chatInput, sender: name, role });
-    setChatInput("");
-  };
-
-  // ── Teacher actions ──────────────────────────────────────────────────────
-  const handleClearCanvas = () => {
-    if (!socket) return;
-    socket.emit("clear-canvas", { code: sessionCode });
-    const ctx = ctxRef.current;
-    if (ctx && canvasRef.current)
-      ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
-  };
-
-  const handleSaveSnapshot = () => {
-    if (!canvasRef.current || role !== "teacher") return;
-    const dataURL = getWhiteBackgroundDataURL(canvasRef.current, 0.85, liveSelectionRef.current);
-    socket.emit("save-snapshot", { sessionCode, dataURL, isFinal: false });
-    alert("Snapshot saved to session history.");
-  };
-
-  const handleExportPDF = () => {
-    if (!canvasRef.current) return;
-    const canvas = canvasRef.current;
-    const imgData = getWhiteBackgroundDataURL(canvas, 0.95, liveSelectionRef.current);
-    const pdf = new jsPDF({
-      orientation: canvas.width > canvas.height ? "l" : "p",
-      unit: "px",
-      format: [canvas.width, canvas.height]
-    });
-    pdf.addImage(imgData, "JPEG", 0, 0, canvas.width, canvas.height);
-    pdf.save(`ClassBoard_${sessionInfo?.title || "Session"}.pdf`);
-  };
-
-  const handleEndSession = () => {
-    if (!socket || !canvasRef.current) return;
-    const finalDataURL = getWhiteBackgroundDataURL(canvasRef.current, 0.85, liveSelectionRef.current);
-    socket.emit("end-session", { code: sessionCode, finalDataURL });
-  };
-
-  const handleKick = (targetId) => {
-    if (!socket) return;
-    socket.emit("kick-member", { code: sessionCode, targetId });
-  };
-
-  const copyCode = () => {
-    navigator.clipboard.writeText(sessionCode).then(() => showToast("Code copied!"));
-  };
-
-  const handleFileUpload = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    if (file.type.startsWith("image/")) {
-      const url = URL.createObjectURL(file);
-      const img = new Image();
-      img.onload = () => {
-        const maxW = 800;
-        const maxH = 800;
-        let w = img.width;
-        let h = img.height;
-        if (w > maxW) { h *= maxW / w; w = maxW; }
-        if (h > maxH) { w *= maxH / h; h = maxH; }
-
-        const tempCanvas = document.createElement("canvas");
-        tempCanvas.width = w;
-        tempCanvas.height = h;
-        tempCanvas.getContext("2d").drawImage(img, 0, 0, w, h);
-        const imgData = tempCanvas.getContext("2d").getImageData(0, 0, w, h);
-        
-        setSelection({ type: TOOLS.SELECT, x: 50, y: 50, w, h, imgData, isCut: true, rotation: 0 });
-        setTool(TOOLS.SELECT);
-        URL.revokeObjectURL(url);
-      };
-      img.src = url;
-    } else if (file.type === "application/pdf") {
-      try {
-        const loadPdfJs = () => {
-          return new Promise((resolve, reject) => {
-            if (window.pdfjsLib) {
-              resolve(window.pdfjsLib);
-              return;
-            }
-            const script = document.createElement('script');
-            script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
-            script.onload = () => {
-              window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-              resolve(window.pdfjsLib);
-            };
-            script.onerror = reject;
-            document.head.appendChild(script);
-          });
-        };
-
-        const pdfjsLib = await loadPdfJs();
-        
-        const arrayBuffer = await file.arrayBuffer();
-        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-        const numPages = pdf.numPages;
-        showToast(`Processing ${numPages} pages...`);
-
-        const pages = [];
-        let totalW = 0;
-        let totalH = 0;
-
-        for (let i = 1; i <= numPages; i++) {
-          const page = await pdf.getPage(i);
-          const viewport = page.getViewport({ scale: 1.5 });
-          const tempCanvas = document.createElement("canvas");
-          tempCanvas.width = viewport.width;
-          tempCanvas.height = viewport.height;
-          await page.render({ canvasContext: tempCanvas.getContext("2d"), viewport }).promise;
-          
-          pages.push(tempCanvas);
-          totalW = Math.max(totalW, viewport.width);
-          totalH += viewport.height + 20;
-          if (totalH > 15000) break; // Safety limit
-        }
-
-        const combinedCanvas = document.createElement("canvas");
-        combinedCanvas.width = totalW;
-        combinedCanvas.height = totalH;
-        const combinedCtx = combinedCanvas.getContext("2d");
-        
-        let currentY = 0;
-        for (const p of pages) {
-          combinedCtx.drawImage(p, (totalW - p.width) / 2, currentY);
-          currentY += p.height + 20;
-        }
-
-        const imgData = combinedCtx.getImageData(0, 0, combinedCanvas.width, combinedCanvas.height);
-        
-        setSelection({ type: TOOLS.SELECT, x: 50, y: 50, w: combinedCanvas.width, h: combinedCanvas.height, imgData, isCut: true, rotation: 0, scale: 0.7 });
-        setTool(TOOLS.SELECT);
-        showToast(`PDF added (${pages.length} pages)`);
-      } catch (err) {
-        console.error(err);
-        showToast("Error loading PDF");
-      }
-    }
-    e.target.value = "";
-  };
-
-  // ── Kicked screen ────────────────────────────────────────────────────────
-  if (kicked) {
-    return (
-      <div style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", height:"100vh", background:"#0d1117", color:"#e6edf3", fontFamily:"Inter, sans-serif", gap:"16px" }}>
-        <div style={{ fontSize:"64px" }}>🚫</div>
-        <h2 style={{ color:"#ef4444" }}>You were removed from the session</h2>
-        <button className="home-btn primary" style={{ width:"auto", padding:"10px 28px" }} onClick={() => navigate("/")}>← Back to Home</button>
-      </div>
-    );
+    return;
   }
 
+  if (!isPainting.current) return;
+  isPainting.current = false;
+
+  if (tool === TOOLS.LASER) {
+    if (socket) socket.emit("laser-stop", { code: sessionCode });
+    return;
+  }
+
+  if (isShapeTool(tool)) {
+    const pos = getPos(e);
+    ctxRef.current.putImageData(snapshotRef.current, 0, 0);
+    drawShape(ctxRef.current, tool, startPos.current, pos, color, stroke);
+
+    if (tool === TOOLS.LINE) {
+      emitStroke(startPos.current.x, startPos.current.y, pos.x, pos.y, tool);
+    }
+  }
+
+  emitCanvas();
+  ctxRef.current.beginPath();
+  snapshotRef.current = null;
+};
+
+// ── Chat ─────────────────────────────────────────────────────────────────
+const addSystemChat = (msg) => {
+  setChats((prev) => [...prev, { sender: "system", message: msg, role: "system", timestamp: new Date().toISOString() }]);
+};
+
+const sendChat = () => {
+  if (!chatInput.trim() || !socket) return;
+  socket.emit("session-chat", { code: sessionCode, message: chatInput, sender: name, role });
+  setChatInput("");
+};
+
+// ── Teacher actions ──────────────────────────────────────────────────────
+const handleClearCanvas = () => {
+  if (!socket) return;
+  socket.emit("clear-canvas", { code: sessionCode });
+  const ctx = ctxRef.current;
+  if (ctx && canvasRef.current)
+    ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+};
+
+const handleSaveSnapshot = () => {
+  if (!canvasRef.current || role !== "teacher") return;
+  const dataURL = getWhiteBackgroundDataURL(canvasRef.current, 0.85, liveSelectionRef.current);
+  socket.emit("save-snapshot", { sessionCode, dataURL, isFinal: false });
+  alert("Snapshot saved to session history.");
+};
+
+const handleExportPDF = () => {
+  if (!canvasRef.current) return;
+  const canvas = canvasRef.current;
+  const imgData = getWhiteBackgroundDataURL(canvas, 0.95, liveSelectionRef.current);
+  const pdf = new jsPDF({
+    orientation: canvas.width > canvas.height ? "l" : "p",
+    unit: "px",
+    format: [canvas.width, canvas.height]
+  });
+  pdf.addImage(imgData, "JPEG", 0, 0, canvas.width, canvas.height);
+  pdf.save(`ClassBoard_${sessionInfo?.title || "Session"}.pdf`);
+};
+
+const handleEndSession = () => {
+  if (!socket || !canvasRef.current) return;
+  const finalDataURL = getWhiteBackgroundDataURL(canvasRef.current, 0.85, liveSelectionRef.current);
+  socket.emit("end-session", { code: sessionCode, finalDataURL });
+};
+
+const handleKick = (targetId) => {
+  if (!socket) return;
+  socket.emit("kick-member", { code: sessionCode, targetId });
+};
+
+const copyCode = () => {
+  navigator.clipboard.writeText(sessionCode).then(() => showToast("Code copied!"));
+};
+
+const handleFileUpload = async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  if (file.type.startsWith("image/")) {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const maxW = 800;
+      const maxH = 800;
+      let w = img.width;
+      let h = img.height;
+      if (w > maxW) { h *= maxW / w; w = maxW; }
+      if (h > maxH) { w *= maxH / h; h = maxH; }
+
+      const tempCanvas = document.createElement("canvas");
+      tempCanvas.width = w;
+      tempCanvas.height = h;
+      tempCanvas.getContext("2d").drawImage(img, 0, 0, w, h);
+      const imgData = tempCanvas.getContext("2d").getImageData(0, 0, w, h);
+
+      setSelection({ type: TOOLS.SELECT, x: 50, y: 50, w, h, imgData, isCut: true, rotation: 0 });
+      setTool(TOOLS.SELECT);
+      URL.revokeObjectURL(url);
+    };
+    img.src = url;
+  } else if (file.type === "application/pdf") {
+    try {
+      const loadPdfJs = () => {
+        return new Promise((resolve, reject) => {
+          if (window.pdfjsLib) {
+            resolve(window.pdfjsLib);
+            return;
+          }
+          const script = document.createElement('script');
+          script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+          script.onload = () => {
+            window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+            resolve(window.pdfjsLib);
+          };
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      };
+
+      const pdfjsLib = await loadPdfJs();
+
+      const arrayBuffer = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      const numPages = pdf.numPages;
+      showToast(`Processing ${numPages} pages...`);
+
+      const pages = [];
+      let totalW = 0;
+      let totalH = 0;
+
+      for (let i = 1; i <= numPages; i++) {
+        const page = await pdf.getPage(i);
+        const viewport = page.getViewport({ scale: 1.5 });
+        const tempCanvas = document.createElement("canvas");
+        tempCanvas.width = viewport.width;
+        tempCanvas.height = viewport.height;
+        await page.render({ canvasContext: tempCanvas.getContext("2d"), viewport }).promise;
+
+        pages.push(tempCanvas);
+        totalW = Math.max(totalW, viewport.width);
+        totalH += viewport.height + 20;
+        if (totalH > 15000) break; // Safety limit
+      }
+
+      const combinedCanvas = document.createElement("canvas");
+      combinedCanvas.width = totalW;
+      combinedCanvas.height = totalH;
+      const combinedCtx = combinedCanvas.getContext("2d");
+
+      let currentY = 0;
+      for (const p of pages) {
+        combinedCtx.drawImage(p, (totalW - p.width) / 2, currentY);
+        currentY += p.height + 20;
+      }
+
+      const imgData = combinedCtx.getImageData(0, 0, combinedCanvas.width, combinedCanvas.height);
+
+      setSelection({ type: TOOLS.SELECT, x: 50, y: 50, w: combinedCanvas.width, h: combinedCanvas.height, imgData, isCut: true, rotation: 0, scale: 0.7 });
+      setTool(TOOLS.SELECT);
+      showToast(`PDF added (${pages.length} pages)`);
+    } catch (err) {
+      console.error(err);
+      showToast("Error loading PDF");
+    }
+  }
+  e.target.value = "";
+};
+
+// ── Kicked screen ────────────────────────────────────────────────────────
+if (kicked) {
   return (
-    <div className="classroom">
-      {/* ── Header ── */}
-      <header className="classroom-header">
-        <div className="classroom-title-area">
-          <button
-            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-            style={{ background: "transparent", border: "none", color: "var(--text1)", fontSize: "24px", cursor: "pointer", marginRight: "12px", position: "relative", display: "flex", alignItems: "center" }}
-            title="Toggle Chat & Participants"
-          >
-            <Menu size={24} />
-            {unreadCount > 0 && (
-              <span style={{ position: "absolute", top: "-5px", right: "-10px", background: "#ef4444", color: "#fff", fontSize: "10px", padding: "2px 5px", borderRadius: "10px", fontWeight: "bold" }}>
-                {unreadCount}
-              </span>
-            )}
-          </button>
-          <div className="toolbar" style={{ margin: 0, padding: 0, background: "transparent", border: "none", boxShadow: "none" }}>
-            <div className="toolbar-group">
-              {[
-                { id: TOOLS.SELECT, label: <MousePointer2 size={18} />, title: "Select" },
-                { id: TOOLS.LASSO,  label: <Move size={18} />, title: "Lasso Select" },
-                { id: TOOLS.PEN,    label: <PenTool size={18} />, title: "Pen" },
-                { id: TOOLS.HIGHLIGHTER, label: <Highlighter size={18} />, title: "Highlighter" },
-                { id: TOOLS.ERASER, label: <Eraser size={18} />, title: "Eraser" },
-                { id: TOOLS.CIRCLE, label: <Circle size={18} />, title: "Circle" },
-                { id: TOOLS.RECTANGLE, label: <Square size={18} />, title: "Rectangle" }
-              ].map((t) => (
-                <React.Fragment key={t.id}>
-                  <button
-                    className={`tool-btn ${tool === t.id ? "active" : ""}`}
-                    title={t.title}
-                    onClick={() => setTool(t.id)}
-                  >
-                    {t.label}
-                  </button>
-                  {t.id === TOOLS.ERASER && role === "teacher" && (
-                    <button 
-                      className="tool-btn" 
-                      onClick={handleClearCanvas} 
-                      title="Clear Board"
-                    >
-                      <Trash2 size={18} />
-                    </button>
-                  )}
-                </React.Fragment>
-              ))}
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100vh", background: "#0d1117", color: "#e6edf3", fontFamily: "Inter, sans-serif", gap: "16px" }}>
+      <div style={{ fontSize: "64px" }}>🚫</div>
+      <h2 style={{ color: "#ef4444" }}>You were removed from the session</h2>
+      <button className="home-btn primary" style={{ width: "auto", padding: "10px 28px" }} onClick={() => navigate("/")}>← Back to Home</button>
+    </div>
+  );
+}
 
-              <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+return (
+  <div className="classroom">
+    {/* ── Header ── */}
+    <header className="classroom-header">
+      <div className="classroom-title-area">
+        <button
+          onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+          style={{ background: "transparent", border: "none", color: "var(--text1)", fontSize: "24px", cursor: "pointer", marginRight: "12px", position: "relative", display: "flex", alignItems: "center" }}
+          title="Toggle Chat & Participants"
+        >
+          <Menu size={24} />
+          {unreadCount > 0 && (
+            <span style={{ position: "absolute", top: "-5px", right: "-10px", background: "#ef4444", color: "#fff", fontSize: "10px", padding: "2px 5px", borderRadius: "10px", fontWeight: "bold" }}>
+              {unreadCount}
+            </span>
+          )}
+        </button>
+        <div className="toolbar" style={{ margin: 0, padding: 0, background: "transparent", border: "none", boxShadow: "none" }}>
+          <div className="toolbar-group">
+            {[
+              { id: TOOLS.SELECT, label: <MousePointer2 size={18} />, title: "Select" },
+              { id: TOOLS.LASSO, label: <Move size={18} />, title: "Lasso Select" },
+              { id: TOOLS.PEN, label: <PenTool size={18} />, title: "Pen" },
+              { id: TOOLS.HIGHLIGHTER, label: <Highlighter size={18} />, title: "Highlighter" },
+              { id: TOOLS.ERASER, label: <Eraser size={18} />, title: "Eraser" },
+              { id: TOOLS.CIRCLE, label: <Circle size={18} />, title: "Circle" },
+              { id: TOOLS.RECTANGLE, label: <Square size={18} />, title: "Rectangle" }
+            ].map((t) => (
+              <React.Fragment key={t.id}>
                 <button
-                  className={`tool-btn ${[TOOLS.LINE, TOOLS.SQUARE, TOOLS.TRIANGLE, TOOLS.HEXAGON].includes(tool) ? "active" : ""}`}
-                  title="More Shapes"
-                  onClick={(e) => {
-                    if (!showMoreShapes) {
-                      const rect = e.currentTarget.getBoundingClientRect();
-                      setShapeMenuCoords({ top: rect.bottom + 8, left: rect.left - 20 });
-                    }
-                    setShowMoreShapes(!showMoreShapes);
-                  }}
-                  style={{ fontSize: "10px", padding: "0 4px", color: "var(--text3)" }}
+                  className={`tool-btn ${tool === t.id ? "active" : ""}`}
+                  title={t.title}
+                  onClick={() => setTool(t.id)}
                 >
-                  {showMoreShapes ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                  {t.label}
                 </button>
-                {showMoreShapes && createPortal(
-                  <div style={{ 
-                    position: "fixed", 
-                    top: shapeMenuCoords.top, 
-                    left: shapeMenuCoords.left, 
-                    display: "flex", 
-                    flexDirection: "column", 
-                    gap: "4px", 
-                    background: "var(--bg2)", 
-                    padding: "6px", 
-                    borderRadius: "8px", 
-                    border: "1px solid var(--border)", 
-                    zIndex: 9999,
-                    boxShadow: "0 8px 24px rgba(0,0,0,0.6)"
-                  }}>
-                    {[
-                      { id: TOOLS.LINE,   label: <Minus size={18} />, title: "Straight line" },
-                      { id: TOOLS.SQUARE, label: <Square size={18} />, title: "Square" },
-                      { id: TOOLS.TRIANGLE, label: <Triangle size={18} />, title: "Triangle" },
-                      { id: TOOLS.HEXAGON, label: <Hexagon size={18} />, title: "Hexagon" }
-                    ].map(t => (
-                      <button
-                        key={t.id}
-                        className={`tool-btn ${tool === t.id ? "active" : ""}`}
-                        title={t.title}
-                        onClick={() => { setTool(t.id); setShowMoreShapes(false); }}
-                        style={{ width: "100%", justifyContent: "center" }}
-                      >
-                        {t.label}
-                      </button>
-                    ))}
-                  </div>,
-                  document.body
-                )}
-              </div>
-
-              {[
-                { id: TOOLS.LASER,  label: <Zap size={18} />, title: "Laser Pointer" },
-              ].map((t) => (
-                <React.Fragment key={t.id}>
+                {t.id === TOOLS.ERASER && role === "teacher" && (
                   <button
-                    className={`tool-btn ${tool === t.id ? "active" : ""}`}
-                    title={t.title}
-                    onClick={() => setTool(t.id)}
+                    className="tool-btn"
+                    onClick={handleClearCanvas}
+                    title="Clear Board"
                   >
-                    {t.label}
+                    <Trash2 size={18} />
                   </button>
-                </React.Fragment>
-              ))}
-              <div className="toolbar-divider" />
-              
-              <button 
-                className="tool-btn" 
-                title="Insert Image"
-                onClick={() => document.getElementById("canvas-image-upload").click()}
-              >
-                <ImagePlus size={18} />
-              </button>
-              <input 
-                id="canvas-image-upload" 
-                type="file" 
-                accept="image/*" 
-                style={{display: "none"}} 
-                onChange={handleFileUpload} 
-              />
+                )}
+              </React.Fragment>
+            ))}
 
-              <button 
-                className="tool-btn" 
-                title="Insert PDF"
-                onClick={() => document.getElementById("canvas-pdf-upload").click()}
+            <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+              <button
+                className={`tool-btn ${[TOOLS.LINE, TOOLS.SQUARE, TOOLS.TRIANGLE, TOOLS.HEXAGON].includes(tool) ? "active" : ""}`}
+                title="More Shapes"
+                onClick={(e) => {
+                  if (!showMoreShapes) {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    setShapeMenuCoords({ top: rect.bottom + 8, left: rect.left - 20 });
+                  }
+                  setShowMoreShapes(!showMoreShapes);
+                }}
+                style={{ fontSize: "10px", padding: "0 4px", color: "var(--text3)" }}
               >
-                <FilePlus2 size={18} />
+                {showMoreShapes ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
               </button>
-              <input 
-                id="canvas-pdf-upload" 
-                type="file" 
-                accept="application/pdf" 
-                style={{display: "none"}} 
-                onChange={handleFileUpload} 
-              />
+              {showMoreShapes && createPortal(
+                <div style={{
+                  position: "fixed",
+                  top: shapeMenuCoords.top,
+                  left: shapeMenuCoords.left,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "4px",
+                  background: "var(--bg2)",
+                  padding: "6px",
+                  borderRadius: "8px",
+                  border: "1px solid var(--border)",
+                  zIndex: 9999,
+                  boxShadow: "0 8px 24px rgba(0,0,0,0.6)"
+                }}>
+                  {[
+                    { id: TOOLS.LINE, label: <Minus size={18} />, title: "Straight line" },
+                    { id: TOOLS.SQUARE, label: <Square size={18} />, title: "Square" },
+                    { id: TOOLS.TRIANGLE, label: <Triangle size={18} />, title: "Triangle" },
+                    { id: TOOLS.HEXAGON, label: <Hexagon size={18} />, title: "Hexagon" }
+                  ].map(t => (
+                    <button
+                      key={t.id}
+                      className={`tool-btn ${tool === t.id ? "active" : ""}`}
+                      title={t.title}
+                      onClick={() => { setTool(t.id); setShowMoreShapes(false); }}
+                      style={{ width: "100%", justifyContent: "center" }}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>,
+                document.body
+              )}
             </div>
 
+            {[
+              { id: TOOLS.LASER, label: <Zap size={18} />, title: "Laser Pointer" },
+            ].map((t) => (
+              <React.Fragment key={t.id}>
+                <button
+                  className={`tool-btn ${tool === t.id ? "active" : ""}`}
+                  title={t.title}
+                  onClick={() => setTool(t.id)}
+                >
+                  {t.label}
+                </button>
+              </React.Fragment>
+            ))}
             <div className="toolbar-divider" />
 
-            <div className="color-dot">
-              {COLORS.map((c) => (
-                <div
-                  key={c}
-                  className={`color-swatch ${color === c ? "active" : ""}`}
-                  style={{ background: c, border: c === "#ffffff" ? "2px solid #555" : "2px solid transparent" }}
-                  onClick={() => { setColor(c); setTool(TOOLS.PEN); }}
-                  title={c}
-                />
-              ))}
-              <input
-                type="color"
-                value={color}
-                onChange={(e) => { setColor(e.target.value); setTool(TOOLS.PEN); }}
-                style={{ width:"22px", height:"22px", border:"none", background:"transparent", cursor:"pointer", borderRadius:"50%", overflow:"hidden" }}
-                title="Custom color"
-              />
-            </div>
-
-            <div className="toolbar-divider" />
-            <span style={{ fontSize:"11px", color:"var(--text3)", fontWeight:"600", textTransform:"uppercase" }}>Size</span>
+            <button
+              className="tool-btn"
+              title="Insert Image"
+              onClick={() => document.getElementById("canvas-image-upload").click()}
+            >
+              <ImagePlus size={18} />
+            </button>
             <input
-              className="stroke-slider"
-              type="range"
-              min={1}
-              max={30}
-              value={stroke}
-              onChange={(e) => setStroke(parseInt(e.target.value))}
+              id="canvas-image-upload"
+              type="file"
+              accept="image/*"
+              style={{ display: "none" }}
+              onChange={handleFileUpload}
+            />
+
+            <button
+              className="tool-btn"
+              title="Insert PDF"
+              onClick={() => document.getElementById("canvas-pdf-upload").click()}
+            >
+              <FilePlus2 size={18} />
+            </button>
+            <input
+              id="canvas-pdf-upload"
+              type="file"
+              accept="application/pdf"
+              style={{ display: "none" }}
+              onChange={handleFileUpload}
             />
           </div>
 
-          {/* Role and Code moved to Sidebar */}
-        </div>
+          <div className="toolbar-divider" />
 
-        <div className="classroom-header-btns">
-          {snapshotSaved && (
-            <span style={{ fontSize:"12px", color:"#4ade80" }}>✓ Saved {snapshotSaved}</span>
-          )}
-          <button className="hdr-btn" onClick={() => {
-            const elem = document.documentElement;
-            const isFullscreen = document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement;
-            if (!isFullscreen) {
-              if (elem.requestFullscreen) {
-                elem.requestFullscreen().catch(err => alert(`Fullscreen error: ${err.message}`));
-              } else if (elem.webkitRequestFullscreen) {
-                elem.webkitRequestFullscreen();
-              } else if (elem.mozRequestFullScreen) {
-                elem.mozRequestFullScreen();
-              } else if (elem.msRequestFullscreen) {
-                elem.msRequestFullscreen();
-              }
-            } else {
-              if (document.exitFullscreen) {
-                document.exitFullscreen();
-              } else if (document.webkitExitFullscreen) {
-                document.webkitExitFullscreen();
-              } else if (document.mozCancelFullScreen) {
-                document.mozCancelFullScreen();
-              } else if (document.msExitFullscreen) {
-                document.msExitFullscreen();
-              }
-            }
-          }}>
-            <Maximize size={18} />
-          </button>
-
-          <div className="zoom-controls" style={{ display: "flex", alignItems: "center", background: "var(--bg3)", borderRadius: "8px", padding: "2px 8px", border: "1px solid var(--border)", gap: "8px" }}>
-            <button className="zoom-btn" onClick={() => setZoom(Math.max(0.01, zoom - 0.1))} style={{ background: "transparent", border: "none", color: "var(--text2)", cursor: "pointer", fontSize: "18px" }}>-</button>
-            <span style={{ fontSize: "12px", color: "var(--text)", minWidth: "45px", textAlign: "center", fontWeight: "bold" }}>{Math.round(zoom * 100)}%</span>
-            <button className="zoom-btn" onClick={() => setZoom(Math.min(10.0, zoom + 0.1))} style={{ background: "transparent", border: "none", color: "var(--text2)", cursor: "pointer", fontSize: "18px" }}>+</button>
-            <button 
-              className="zoom-btn" 
-              onClick={() => setZoom(1.0)} 
-              style={{ background: "rgba(79,142,247,0.1)", border: "none", color: "var(--primary)", cursor: "pointer", fontSize: "10px", padding: "4px 8px", borderRadius: "4px" }}
-            >
-              Reset
-            </button>
+          <div className="color-dot">
+            {COLORS.map((c) => (
+              <div
+                key={c}
+                className={`color-swatch ${color === c ? "active" : ""}`}
+                style={{ background: c, border: c === "#ffffff" ? "2px solid #555" : "2px solid transparent" }}
+                onClick={() => { setColor(c); setTool(TOOLS.PEN); }}
+                title={c}
+              />
+            ))}
+            <input
+              type="color"
+              value={color}
+              onChange={(e) => { setColor(e.target.value); setTool(TOOLS.PEN); }}
+              style={{ width: "22px", height: "22px", border: "none", background: "transparent", cursor: "pointer", borderRadius: "50%", overflow: "hidden" }}
+              title="Custom color"
+            />
           </div>
 
-          <button className="hdr-btn save" onClick={handleExportPDF} title="Export PDF">
-            <FileDown size={18} />
-          </button>
-          <button className="hdr-btn save" onClick={handleSaveSnapshot} title="Save Snapshot">
-            <Save size={18} />
-          </button>
-          {role === "teacher" && (
-            <button className="hdr-btn end" onClick={handleEndSession} title="End Class">
-              <LogOut size={18} />
-            </button>
-          )}
+          <div className="toolbar-divider" />
+          <span style={{ fontSize: "11px", color: "var(--text3)", fontWeight: "600", textTransform: "uppercase" }}>Size</span>
+          <input
+            className="stroke-slider"
+            type="range"
+            min={1}
+            max={30}
+            value={stroke}
+            onChange={(e) => setStroke(parseInt(e.target.value))}
+          />
+        </div>
+
+        {/* Role and Code moved to Sidebar */}
+      </div>
+
+      <div className="classroom-header-btns">
+        {snapshotSaved && (
+          <span style={{ fontSize: "12px", color: "#4ade80" }}>✓ Saved {snapshotSaved}</span>
+        )}
+        <button className="hdr-btn" onClick={() => {
+          const elem = document.documentElement;
+          const isFullscreen = document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement;
+          if (!isFullscreen) {
+            if (elem.requestFullscreen) {
+              elem.requestFullscreen().catch(err => alert(`Fullscreen error: ${err.message}`));
+            } else if (elem.webkitRequestFullscreen) {
+              elem.webkitRequestFullscreen();
+            } else if (elem.mozRequestFullScreen) {
+              elem.mozRequestFullScreen();
+            } else if (elem.msRequestFullscreen) {
+              elem.msRequestFullscreen();
+            }
+          } else {
+            if (document.exitFullscreen) {
+              document.exitFullscreen();
+            } else if (document.webkitExitFullscreen) {
+              document.webkitExitFullscreen();
+            } else if (document.mozCancelFullScreen) {
+              document.mozCancelFullScreen();
+            } else if (document.msExitFullscreen) {
+              document.msExitFullscreen();
+            }
+          }
+        }}>
+          <Maximize size={18} />
+        </button>
+
+        <div className="zoom-controls" style={{ display: "flex", alignItems: "center", background: "var(--bg3)", borderRadius: "8px", padding: "2px 8px", border: "1px solid var(--border)", gap: "8px" }}>
+          <button className="zoom-btn" onClick={() => setZoom(Math.max(0.01, zoom - 0.1))} style={{ background: "transparent", border: "none", color: "var(--text2)", cursor: "pointer", fontSize: "18px" }}>-</button>
+          <span style={{ fontSize: "12px", color: "var(--text)", minWidth: "45px", textAlign: "center", fontWeight: "bold" }}>{Math.round(zoom * 100)}%</span>
+          <button className="zoom-btn" onClick={() => setZoom(Math.min(10.0, zoom + 0.1))} style={{ background: "transparent", border: "none", color: "var(--text2)", cursor: "pointer", fontSize: "18px" }}>+</button>
           <button
-            className="hdr-btn"
-            style={{ background:"var(--bg3)", border:"1px solid var(--border)", color:"var(--text2)", padding: "8px 12px" }}
-            onClick={() => navigate("/")}
-            title="Leave Session"
+            className="zoom-btn"
+            onClick={() => setZoom(1.0)}
+            style={{ background: "rgba(79,142,247,0.1)", border: "none", color: "var(--primary)", cursor: "pointer", fontSize: "10px", padding: "4px 8px", borderRadius: "4px" }}
           >
-            <ArrowLeft size={18} />
+            Reset
           </button>
         </div>
-      </header>
 
-      <div className="classroom-body">
-        {/* ── Sidebar ── */}
-        {isSidebarOpen && (
-          <aside className="classroom-sidebar">
+        <button className="hdr-btn save" onClick={handleExportPDF} title="Export PDF">
+          <FileDown size={18} />
+        </button>
+        <button className="hdr-btn save" onClick={handleSaveSnapshot} title="Save Snapshot">
+          <Save size={18} />
+        </button>
+        {role === "teacher" && (
+          <button className="hdr-btn end" onClick={handleEndSession} title="End Class">
+            <LogOut size={18} />
+          </button>
+        )}
+        <button
+          className="hdr-btn"
+          style={{ background: "var(--bg3)", border: "1px solid var(--border)", color: "var(--text2)", padding: "8px 12px" }}
+          onClick={() => navigate("/")}
+          title="Leave Session"
+        >
+          <ArrowLeft size={18} />
+        </button>
+      </div>
+    </header>
+
+    <div className="classroom-body">
+      {/* ── Sidebar ── */}
+      {isSidebarOpen && (
+        <aside className="classroom-sidebar">
           <div className="sidebar-section" style={{ borderBottom: "1px solid var(--border)", padding: "16px 12px", display: "flex", alignItems: "center", gap: "10px", background: "rgba(255,255,255,0.03)" }}>
-             <span className={`classroom-role-pill ${role}`} style={{ margin: 0 }}>
-               {role === "teacher" ? <Crown size={16} /> : <User size={16} />}
-               <span style={{ marginLeft: "6px", fontSize: "12px", fontWeight: "600" }}>{role === "teacher" ? "Teacher" : "Student"}</span>
-             </span>
-             {sessionCode && (
-               <span className="classroom-code-badge" onClick={copyCode} style={{ margin: 0, padding: "4px 8px" }}>
-                 <Copy size={14} /> {sessionCode}
-               </span>
-             )}
+            <span className={`classroom-role-pill ${role}`} style={{ margin: 0 }}>
+              {role === "teacher" ? <Crown size={16} /> : <User size={16} />}
+              <span style={{ marginLeft: "6px", fontSize: "12px", fontWeight: "600" }}>{role === "teacher" ? "Teacher" : "Student"}</span>
+            </span>
+            {sessionCode && (
+              <span className="classroom-code-badge" onClick={copyCode} style={{ margin: 0, padding: "4px 8px" }}>
+                <Copy size={14} /> {sessionCode}
+              </span>
+            )}
           </div>
           <div className="sidebar-section">
             <h3>Participants ({members.length})</h3>
@@ -1214,46 +1213,46 @@ export default function ClassroomScreen() {
             </div>
           </div>
         </aside>
-        )}
+      )}
 
-        {/* ── Whiteboard ── */}
-        <div className="whiteboard-area">
-          {/* Toolbar moved to header */}
+      {/* ── Whiteboard ── */}
+      <div className="whiteboard-area">
+        {/* Toolbar moved to header */}
 
-          {/* Canvas */}
-          <div className="canvas-wrapper">
-            <div style={{ 
-              position: "relative", 
-              width: 3000 * zoom, 
-              height: 10000 * zoom,
-              background: "#ffffff",
-              transition: "width 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), height 0.25s cubic-bezier(0.2, 0.8, 0.2, 1)"
+        {/* Canvas */}
+        <div className="canvas-wrapper">
+          <div style={{
+            position: "relative",
+            width: 3000 * zoom,
+            height: 10000 * zoom,
+            background: "#ffffff",
+            transition: "width 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), height 0.25s cubic-bezier(0.2, 0.8, 0.2, 1)"
+          }}>
+            <div style={{
+              transform: `scale(${zoom})`,
+              transformOrigin: "0 0",
+              width: 3000,
+              height: 10000,
+              position: "absolute",
+              top: 0,
+              left: 0,
+              transition: "transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1)"
             }}>
-              <div style={{
-                transform: `scale(${zoom})`,
-                transformOrigin: "0 0",
-                width: 3000,
-                height: 10000,
-                position: "absolute",
-                top: 0,
-                left: 0,
-                transition: "transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1)"
-              }}>
-                {selection && (
-                  <div
-                    ref={selectionDivRef}
-                    style={{
-                      position: "absolute",
-                      left: selection.x,
-                      top: selection.y,
-                      width: selection.w,
-                      height: selection.h,
-                      transform: `rotate(${selection.rotation || 0}rad) scale(${selection.scale || 1})`,
-                      transformOrigin: "center center",
-                      zIndex: 50,
-                      pointerEvents: "none",
-                    }}
-                  >
+              {selection && (
+                <div
+                  ref={selectionDivRef}
+                  style={{
+                    position: "absolute",
+                    left: selection.x,
+                    top: selection.y,
+                    width: selection.w,
+                    height: selection.h,
+                    transform: `rotate(${selection.rotation || 0}rad) scale(${selection.scale || 1})`,
+                    transformOrigin: "center center",
+                    zIndex: 50,
+                    pointerEvents: "none",
+                  }}
+                >
                   <canvas
                     style={{
                       width: "100%",
@@ -1264,7 +1263,7 @@ export default function ClassroomScreen() {
                     height={selection.h}
                     ref={selCanvasRef}
                   />
-                  
+
                   {/* Resize Handles */}
                   {['tl', 'tr', 'bl', 'br'].map(corner => {
                     const invScale = 1 / (selection.scale || 1);
@@ -1318,7 +1317,7 @@ export default function ClassroomScreen() {
                     }}
                     title="Drag to rotate"
                   />
-                  <div 
+                  <div
                     style={{
                       position: "absolute",
                       left: "50%",
@@ -1347,79 +1346,79 @@ export default function ClassroomScreen() {
                   transition: "left 0.05s linear, top 0.05s linear"
                 }} />
               ))}
-                <canvas
-                  ref={canvasRef}
-                  width={3000}
-                  height={10000}
-                  className="whiteboard-canvas"
-                  style={{ 
-                    cursor: tool === TOOLS.ERASER ? "cell" : tool === TOOLS.LASER ? "crosshair" : "crosshair", 
-                    touchAction: "none",
-                    display: "block"
-                  }}
-                  onPointerDown={onDown}
-                  onPointerMove={onMove}
-                  onPointerUp={onUp}
-                  onPointerLeave={onUp}
-                />
-                
-                {/* Real-time remote shape previews */}
-                <svg style={{ position: "absolute", top: 0, left: 0, width: 3000, height: 10000, pointerEvents: "none", zIndex: 40 }}>
-                  {Object.entries(remotePreviews).map(([id, p]) => {
-                    const x = p.start.x;
-                    const y = p.start.y;
-                    const w = p.end.x - x;
-                    const h = p.end.y - y;
-                    const color = p.color;
-                    const stroke = p.stroke;
+              <canvas
+                ref={canvasRef}
+                width={3000}
+                height={10000}
+                className="whiteboard-canvas"
+                style={{
+                  cursor: tool === TOOLS.ERASER ? "cell" : tool === TOOLS.LASER ? "crosshair" : "crosshair",
+                  touchAction: "none",
+                  display: "block"
+                }}
+                onPointerDown={onDown}
+                onPointerMove={onMove}
+                onPointerUp={onUp}
+                onPointerLeave={onUp}
+              />
 
-                    if (p.tool === TOOLS.RECTANGLE || p.tool === TOOLS.SQUARE) {
-                      const side = p.tool === TOOLS.SQUARE ? Math.max(Math.abs(w), Math.abs(h)) : null;
-                      const sw = side !== null ? (w < 0 ? -side : side) : w;
-                      const sh = side !== null ? (h < 0 ? -side : side) : h;
-                      return <rect key={id} x={sw < 0 ? x + sw : x} y={sh < 0 ? y + sh : y} width={Math.abs(sw)} height={Math.abs(sh)} fill="none" stroke={color} strokeWidth={stroke} strokeDasharray="5,5" />;
-                    }
-                    if (p.tool === TOOLS.CIRCLE) {
-                      const radius = Math.sqrt(w*w + h*h);
-                      return <circle key={id} cx={x} cy={y} r={radius} fill="none" stroke={color} strokeWidth={stroke} strokeDasharray="5,5" />;
-                    }
-                    if (p.tool === TOOLS.LINE) {
-                      return <line key={id} x1={x} y1={y} x2={p.end.x} y2={p.end.y} stroke={color} strokeWidth={stroke} strokeDasharray="5,5" />;
-                    }
-                    return null;
-                  })}
-                </svg>
-              </div>
+              {/* Real-time remote shape previews */}
+              <svg style={{ position: "absolute", top: 0, left: 0, width: 3000, height: 10000, pointerEvents: "none", zIndex: 40 }}>
+                {Object.entries(remotePreviews).map(([id, p]) => {
+                  const x = p.start.x;
+                  const y = p.start.y;
+                  const w = p.end.x - x;
+                  const h = p.end.y - y;
+                  const color = p.color;
+                  const stroke = p.stroke;
+
+                  if (p.tool === TOOLS.RECTANGLE || p.tool === TOOLS.SQUARE) {
+                    const side = p.tool === TOOLS.SQUARE ? Math.max(Math.abs(w), Math.abs(h)) : null;
+                    const sw = side !== null ? (w < 0 ? -side : side) : w;
+                    const sh = side !== null ? (h < 0 ? -side : side) : h;
+                    return <rect key={id} x={sw < 0 ? x + sw : x} y={sh < 0 ? y + sh : y} width={Math.abs(sw)} height={Math.abs(sh)} fill="none" stroke={color} strokeWidth={stroke} strokeDasharray="5,5" />;
+                  }
+                  if (p.tool === TOOLS.CIRCLE) {
+                    const radius = Math.sqrt(w * w + h * h);
+                    return <circle key={id} cx={x} cy={y} r={radius} fill="none" stroke={color} strokeWidth={stroke} strokeDasharray="5,5" />;
+                  }
+                  if (p.tool === TOOLS.LINE) {
+                    return <line key={id} x1={x} y1={y} x2={p.end.x} y2={p.end.y} stroke={color} strokeWidth={stroke} strokeDasharray="5,5" />;
+                  }
+                  return null;
+                })}
+              </svg>
             </div>
           </div>
         </div>
       </div>
+    </div>
 
-      {/* ── Session ended overlay ── */}
-      {sessionEnded && (
-        <div className="session-ended-overlay">
-          <div className="session-ended-card">
-            <div style={{ fontSize:"48px", marginBottom:"12px" }}>🎓</div>
-            <h2>Class Has Ended</h2>
-            <p>
-              {role === "teacher"
-                ? "Your class session has ended and the board has been saved."
-                : "The teacher ended this class session. Your work has been saved."}
-            </p>
-            <div className="session-ended-btns">
-              <button className="se-btn primary" onClick={() => navigate(`/replay/${sessionCode}`)}>
-                📋 View Session
-              </button>
-              <button className="se-btn secondary" onClick={() => navigate("/")}>
-                ← Home
-              </button>
-            </div>
+    {/* ── Session ended overlay ── */}
+    {sessionEnded && (
+      <div className="session-ended-overlay">
+        <div className="session-ended-card">
+          <div style={{ fontSize: "48px", marginBottom: "12px" }}>🎓</div>
+          <h2>Class Has Ended</h2>
+          <p>
+            {role === "teacher"
+              ? "Your class session has ended and the board has been saved."
+              : "The teacher ended this class session. Your work has been saved."}
+          </p>
+          <div className="session-ended-btns">
+            <button className="se-btn primary" onClick={() => navigate(`/replay/${sessionCode}`)}>
+              📋 View Session
+            </button>
+            <button className="se-btn secondary" onClick={() => navigate("/")}>
+              ← Home
+            </button>
           </div>
         </div>
-      )}
+      </div>
+    )}
 
-      {/* ── Toast ── */}
-      {toast && <div className="toast">{toast}</div>}
-    </div>
-  );
+    {/* ── Toast ── */}
+    {toast && <div className="toast">{toast}</div>}
+  </div>
+);
 }
