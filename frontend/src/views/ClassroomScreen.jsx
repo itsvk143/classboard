@@ -618,6 +618,7 @@ export default function ClassroomScreen() {
 
   const onUp = (e) => {
     if (!isPainting.current && !isDraggingSelection.current && !isResizingSelection.current && !isRotatingSelection.current) return;
+    const pos = getPos(e);
 
     if (isDraggingSelection.current || isResizingSelection.current || isRotatingSelection.current) {
       isDraggingSelection.current = false;
@@ -666,7 +667,6 @@ export default function ClassroomScreen() {
       ctxRef.current.putImageData(snapshotRef.current, 0, 0);
 
       if (tool === TOOLS.SELECT) {
-        const pos = getPos(e);
         const w = Math.abs(pos.x - startPos.current.x);
         const h = Math.abs(pos.y - startPos.current.y);
         const x = Math.min(pos.x, startPos.current.x);
