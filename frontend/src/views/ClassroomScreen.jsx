@@ -716,7 +716,6 @@ export default function ClassroomScreen() {
       }
     }
     return;
-  }
 
   if (!isPainting.current) return;
   isPainting.current = false;
