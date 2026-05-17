@@ -730,8 +730,6 @@ export default function ClassroomScreen() {
         });
       }
     } else if (isSelectionTool(tool)) {
-      const w = Math.abs(pos.x - startPos.current.x);
-      const h = Math.abs(pos.y - startPos.current.y);
       if (liveSelectionRef.current) {
         setSelection({ ...liveSelectionRef.current });
       }
