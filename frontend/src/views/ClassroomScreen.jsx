@@ -127,8 +127,9 @@ export default function ClassroomScreen() {
   const [toast, setToast] = useState("");
   const [kicked, setKicked] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
-  const [banned, setBanned] = useState(null); // null | { type: 'temp'|'perm', minutes? }
-  const [activeStudentMenu, setActiveStudentMenu] = useState(null); // memberId with open menu
+  const [classLocked, setClassLocked] = useState(false);
+  const [banned, setBanned] = useState(null);
+  const [activeStudentMenu, setActiveStudentMenu] = useState(null);
   const [snapshotSaved, setSnapshotSaved] = useState(null);
 
   const showToast = (msg) => {
@@ -274,6 +275,8 @@ export default function ClassroomScreen() {
     sock.on("you-were-muted",   () => { setIsMuted(true);  showToast("🔇 You have been muted by the teacher."); });
     sock.on("you-were-unmuted", () => { setIsMuted(false); showToast("🔊 You can draw again."); });
     sock.on("you-were-banned",  ({ type, minutes }) => setBanned({ type, minutes }));
+    sock.on("class-locked",   ({ members: m }) => { setMembers(m); setClassLocked(true);  showToast("🔒 Teacher locked the board."); });
+    sock.on("class-unlocked", ({ members: m }) => { setMembers(m); setClassLocked(false); showToast("🔓 Board unlocked — you can draw."); });
 
     sock.on("snapshot-saved", ({ timestamp }) => {
       setSnapshotSaved(new Date(timestamp).toLocaleTimeString());
@@ -872,6 +875,22 @@ const handleMuteStudent = (targetId, muted) => {
   setActiveStudentMenu(null);
 };
 
+const handleLockClass = () => {
+  if (!socket) return;
+  socket.emit("lock-class", { code: sessionCode });
+  setClassLocked(true);
+  setIsLeftMenuOpen(false);
+  showToast("🔒 All students muted — teacher-only mode.");
+};
+
+const handleUnlockClass = () => {
+  if (!socket) return;
+  socket.emit("unlock-class", { code: sessionCode });
+  setClassLocked(false);
+  setIsLeftMenuOpen(false);
+  showToast("🔓 All students can draw again.");
+};
+
 const handleTempBan = (targetId, minutes) => {
   if (!socket) return;
   if (!window.confirm(`Temporarily ban this student for ${minutes} minutes?`)) return;
@@ -1093,6 +1112,28 @@ return (
           <Save size={18} style={{ color: "#4ade80" }} />
           Save Snapshot
         </button>
+
+        {/* Lock / Unlock all students — teacher only */}
+        {role === "teacher" && (
+          <button
+            onClick={classLocked ? handleUnlockClass : handleLockClass}
+            style={{
+              display: "flex", alignItems: "center", gap: "12px",
+              padding: "12px 14px", borderRadius: "10px",
+              background: classLocked ? "rgba(245,158,11,0.12)" : "rgba(245,158,11,0.06)",
+              border: classLocked ? "1px solid rgba(245,158,11,0.45)" : "1px solid rgba(245,158,11,0.2)",
+              color: "var(--text1)", cursor: "pointer", fontSize: "14px", fontWeight: "500",
+              transition: "background 0.2s", width: "100%", textAlign: "left"
+            }}
+            onMouseEnter={e => e.currentTarget.style.background="rgba(245,158,11,0.2)"}
+            onMouseLeave={e => e.currentTarget.style.background= classLocked ? "rgba(245,158,11,0.12)" : "rgba(245,158,11,0.06)"}
+            title={classLocked ? "Allow all students to draw" : "Block all students from drawing"}
+          >
+            <span style={{ fontSize: 18 }}>{classLocked ? "🔓" : "🔒"}</span>
+            {classLocked ? "Unlock All Students" : "Lock All Students"}
+            {classLocked && <span style={{ marginLeft: "auto", fontSize: 10, background: "rgba(245,158,11,0.25)", padding: "2px 7px", borderRadius: 8, color: "#f59e0b" }}>LOCKED</span>}
+          </button>
+        )}
 
         {/* End Class — teacher only */}
         {role === "teacher" && (
@@ -1420,7 +1461,23 @@ return (
                   <div className="participant-role">{m.role}</div>
                 </div>
                 {role === "teacher" && m.role !== "teacher" && (
-                  <div style={{ position: "relative" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, position: "relative" }}>
+                    {/* Quick Allow/Revoke button when class is locked */}
+                    {classLocked && (
+                      <button
+                        onClick={() => handleMuteStudent(m.id, m.muted)}
+                        title={m.muted ? "Allow this student to draw" : "Revoke draw permission"}
+                        style={{
+                          background: m.muted ? "rgba(74,222,128,0.1)" : "rgba(245,158,11,0.1)",
+                          border: m.muted ? "1px solid rgba(74,222,128,0.3)" : "1px solid rgba(245,158,11,0.3)",
+                          color: m.muted ? "#4ade80" : "#f59e0b",
+                          borderRadius: 6, padding: "3px 8px", cursor: "pointer", fontSize: 11, fontWeight: 600, whiteSpace: "nowrap"
+                        }}
+                      >
+                        {m.muted ? "✋ Allow" : "🔇 Revoke"}
+                      </button>
+                    )}
+                    {/* ⋯ full menu */}
                     <button
                       className="kick-btn"
                       title="Manage student"
@@ -1433,11 +1490,11 @@ return (
                         position: "absolute", right: 0, top: "110%", zIndex: 9999,
                         background: "#1c2128", border: "1px solid var(--border)",
                         borderRadius: 10, boxShadow: "0 8px 24px rgba(0,0,0,0.6)",
-                        minWidth: 180, overflow: "hidden"
+                        minWidth: 200, overflow: "hidden"
                       }}>
                         {/* Mute / Unmute */}
                         <button onClick={() => handleMuteStudent(m.id, !m.muted)} style={menuItemStyle("#f59e0b")}>
-                          {m.muted ? "🔊 Unmute (Allow Drawing)" : "🔇 Mute (Disallow Drawing)"}
+                          {m.muted ? "🔊 Allow Drawing" : "🔇 Mute (Disallow Drawing)"}
                         </button>
                         <div style={{ height: 1, background: "var(--border)", margin: "2px 0" }} />
                         {/* Temp ban options */}

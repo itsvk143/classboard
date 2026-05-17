@@ -232,9 +232,12 @@ io.on("connection", (socket) => {
       title: title || "Untitled Class",
       teacher: { id: socket.id, name, email },
       members: [{ id: socket.id, name, email, role: "teacher" }],
-      canvasState: null, // latest canvas dataURL
+      canvasState: null,
       chats: [],
       active: true,
+      classLocked: false,
+      mutedIds: new Set(),
+      tempBans: new Map(),
     };
 
     // Persist
@@ -446,6 +449,44 @@ io.on("connection", (socket) => {
     io.to(code).emit("session-ended", { code });
     delete rooms[code];
     console.log(`Session ${code} ended`);
+  });
+
+  // ── Lock All Students (mute entire class) ───────────────────────────────────
+  socket.on("lock-class", ({ code }) => {
+    const room = rooms[code];
+    if (!room) return;
+    const me = room.members.find(m => m.id === socket.id);
+    if (!me || me.role !== "teacher") return;
+
+    room.classLocked = true;
+    room.members.forEach(m => {
+      if (m.role !== "teacher") {
+        m.muted = true;
+        room.mutedIds.add(m.id);
+        io.to(m.id).emit("you-were-muted", {});
+      }
+    });
+    io.to(code).emit("class-locked", { members: room.members });
+    console.log(`Class ${code} locked by teacher`);
+  });
+
+  // ── Unlock All Students ────────────────────────────────────────────────
+  socket.on("unlock-class", ({ code }) => {
+    const room = rooms[code];
+    if (!room) return;
+    const me = room.members.find(m => m.id === socket.id);
+    if (!me || me.role !== "teacher") return;
+
+    room.classLocked = false;
+    room.mutedIds.clear();
+    room.members.forEach(m => {
+      if (m.role !== "teacher") {
+        m.muted = false;
+        io.to(m.id).emit("you-were-unmuted", {});
+      }
+    });
+    io.to(code).emit("class-unlocked", { members: room.members });
+    console.log(`Class ${code} unlocked by teacher`);
   });
 
   // ── Mute / Unmute a student (disallow/allow drawing) ────────────────────
