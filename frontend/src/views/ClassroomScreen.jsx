@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 import {
   MousePointer2, Move, PenTool, Highlighter, Eraser, Circle, Square,
   Triangle, Hexagon, Minus, Zap, Trash2, FileDown, Save, LogOut,
-  ChevronDown, ChevronUp, Crown, User, Menu, Copy, Maximize, ArrowLeft,
+  ChevronDown, ChevronUp, Menu, Copy, Maximize, ArrowLeft,
   FilePlus2, ImagePlus, Wand2
 } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -732,8 +732,6 @@ export default function ClassroomScreen() {
     } else if (isSelectionTool(tool)) {
       const w = Math.abs(pos.x - startPos.current.x);
       const h = Math.abs(pos.y - startPos.current.y);
-      const x = Math.min(pos.x, startPos.current.x);
-      const y = Math.min(pos.y, startPos.current.y);
       if (liveSelectionRef.current) {
         setSelection({ ...liveSelectionRef.current });
       }
@@ -790,7 +788,7 @@ export default function ClassroomScreen() {
         }
       }
     }
-    return;
+
 
   if (!isPainting.current) return;
   isPainting.current = false;
