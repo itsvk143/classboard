@@ -5,7 +5,7 @@ import {
   MousePointer2, Move, PenTool, Highlighter, Eraser, Circle, Square,
   Triangle, Hexagon, Minus, Zap, Trash2, FileDown, Save, LogOut,
   ChevronDown, ChevronUp, Crown, User, Menu, Copy, Maximize, ArrowLeft,
-  FilePlus2, ImagePlus
+  FilePlus2, ImagePlus, Wand2
 } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { io } from "socket.io-client";
@@ -17,7 +17,7 @@ const ENDPOINT = SOCKET_ENDPOINT;
 const COLORS = [
   "#000000", "#ffffff", "#ef4444", "#3b82f6", "#22c55e", "#ec4899",
 ];
-const TOOLS = { SELECT: "select", LASSO: "lasso", PEN: "pen", ERASER: "eraser", HIGHLIGHTER: "highlighter", LASER: "laser", LINE: "line", TRIANGLE: "triangle", CIRCLE: "circle", RECTANGLE: "rectangle", SQUARE: "square", HEXAGON: "hexagon" };
+const TOOLS = { SELECT: "select", LASSO: "lasso", PEN: "pen", ERASER: "eraser", OBJ_ERASER: "obj_eraser", HIGHLIGHTER: "highlighter", LASER: "laser", LINE: "line", TRIANGLE: "triangle", CIRCLE: "circle", RECTANGLE: "rectangle", SQUARE: "square", HEXAGON: "hexagon" };
 
 const getWhiteBackgroundDataURL = (canvas, quality = 0.95, selection = null) => {
   const tempCanvas = document.createElement("canvas");
@@ -88,6 +88,7 @@ export default function ClassroomScreen() {
   const snapshotRef = useRef(null); // for straight line preview
   const [lasers, setLasers] = useState({});
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isLeftMenuOpen, setIsLeftMenuOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const isSidebarOpenRef = useRef(isSidebarOpen);
   const [zoom, setZoom] = useState(1.0); // 1.0 = 100%
@@ -125,6 +126,9 @@ export default function ClassroomScreen() {
   // UI
   const [toast, setToast] = useState("");
   const [kicked, setKicked] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
+  const [banned, setBanned] = useState(null); // null | { type: 'temp'|'perm', minutes? }
+  const [activeStudentMenu, setActiveStudentMenu] = useState(null); // memberId with open menu
   const [snapshotSaved, setSnapshotSaved] = useState(null);
 
   const showToast = (msg) => {
@@ -267,6 +271,9 @@ export default function ClassroomScreen() {
     });
 
     sock.on("you-were-removed", () => setKicked(true));
+    sock.on("you-were-muted",   () => { setIsMuted(true);  showToast("🔇 You have been muted by the teacher."); });
+    sock.on("you-were-unmuted", () => { setIsMuted(false); showToast("🔊 You can draw again."); });
+    sock.on("you-were-banned",  ({ type, minutes }) => setBanned({ type, minutes }));
 
     sock.on("snapshot-saved", ({ timestamp }) => {
       setSnapshotSaved(new Date(timestamp).toLocaleTimeString());
@@ -459,10 +466,78 @@ export default function ClassroomScreen() {
     ctx.stroke();
   };
 
+  // ── Object (Flood-fill) Eraser ───────────────────────────────────────────
+  const floodFillErase = useCallback((px, py) => {
+    const canvas = canvasRef.current;
+    const ctx = ctxRef.current;
+    if (!canvas || !ctx) return;
+
+    const W = canvas.width;
+    const H = canvas.height;
+    const imgData = ctx.getImageData(0, 0, W, H);
+    const data = imgData.data;
+
+    const ix = Math.round(px);
+    const iy = Math.round(py);
+    if (ix < 0 || ix >= W || iy < 0 || iy >= H) return;
+
+    const idx = (iy * W + ix) * 4;
+    const tr = data[idx], tg = data[idx + 1], tb = data[idx + 2];
+
+    // If already white (or near-white), nothing to erase
+    if (tr > 245 && tg > 245 && tb > 245) return;
+
+    // Tolerance for color matching (handles anti-aliasing)
+    const TOL = 60;
+    const matches = (i) => {
+      return Math.abs(data[i] - tr) <= TOL &&
+             Math.abs(data[i + 1] - tg) <= TOL &&
+             Math.abs(data[i + 2] - tb) <= TOL;
+    };
+
+    // Scanline stack flood fill for performance
+    const stack = [[ix, iy]];
+    const visited = new Uint8Array(W * H);
+    visited[iy * W + ix] = 1;
+
+    while (stack.length > 0) {
+      const [cx, cy] = stack.pop();
+      const ci = (cy * W + cx) * 4;
+      // Erase to white
+      data[ci] = 255; data[ci + 1] = 255; data[ci + 2] = 255; data[ci + 3] = 255;
+
+      const neighbors = [[cx - 1, cy], [cx + 1, cy], [cx, cy - 1], [cx, cy + 1]];
+      for (const [nx, ny] of neighbors) {
+        if (nx < 0 || nx >= W || ny < 0 || ny >= H) continue;
+        const ni = ny * W + nx;
+        if (visited[ni]) continue;
+        visited[ni] = 1;
+        const npi = ni * 4;
+        if (matches(npi)) stack.push([nx, ny]);
+      }
+    }
+
+    ctx.putImageData(imgData, 0, 0);
+    emitCanvas();
+  }, [emitCanvas]);
+
   const onDown = (e) => {
     if (e.button === 2) return; // ignore right-click
     e.preventDefault();
+
+    // Block all drawing when muted by teacher
+    if (isMuted && role !== 'teacher') {
+      showToast('🔇 You are muted — drawing is disabled.');
+      return;
+    }
+
     const pos = getPos(e);
+
+    // Object Eraser: flood-fill on click
+    if (tool === TOOLS.OBJ_ERASER) {
+      floodFillErase(pos.x, pos.y);
+      return;
+    }
 
     if (isSelectionTool(tool)) {
       if (isRotatingSelection.current || isResizingSelection.current) return;
@@ -782,13 +857,37 @@ const handleExportPDF = () => {
 
 const handleEndSession = () => {
   if (!socket || !canvasRef.current) return;
+  const code = sessionCodeRef.current || sessionCode;
+  if (!code) { showToast('⚠️ No active session to end.'); return; }
+  if (!window.confirm('End this class session for everyone?')) return;
   const finalDataURL = getWhiteBackgroundDataURL(canvasRef.current, 0.85, liveSelectionRef.current);
-  socket.emit("end-session", { code: sessionCode, finalDataURL });
+  console.log('Ending session:', code);
+  socket.emit('end-session', { code, finalDataURL });
 };
 
 const handleKick = (targetId) => {
   if (!socket) return;
   socket.emit("kick-member", { code: sessionCode, targetId });
+};
+
+const handleMuteStudent = (targetId, muted) => {
+  if (!socket) return;
+  socket.emit("mute-student", { code: sessionCode, targetId, muted });
+  setActiveStudentMenu(null);
+};
+
+const handleTempBan = (targetId, minutes) => {
+  if (!socket) return;
+  if (!window.confirm(`Temporarily ban this student for ${minutes} minutes?`)) return;
+  socket.emit("temp-ban-student", { code: sessionCode, targetId, minutes });
+  setActiveStudentMenu(null);
+};
+
+const handlePermBan = (targetId) => {
+  if (!socket) return;
+  if (!window.confirm("Permanently ban this student? They will never be able to rejoin this session.")) return;
+  socket.emit("perm-ban-student", { code: sessionCode, targetId });
+  setActiveStudentMenu(null);
 };
 
 const copyCode = () => {
@@ -900,11 +999,158 @@ if (kicked) {
   );
 }
 
+// ── Banned screen ────────────────────────────────────────────────────────
+if (banned) {
+  const isPerm = banned.type === "perm";
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100vh", background: "#0d1117", color: "#e6edf3", fontFamily: "Inter, sans-serif", gap: "16px" }}>
+      <div style={{ fontSize: "64px" }}>{isPerm ? "⛔" : "⏳"}</div>
+      <h2 style={{ color: isPerm ? "#ef4444" : "#f59e0b" }}>
+        {isPerm ? "Permanently Banned" : `Temporarily Banned (⏳${banned.minutes} min)`}
+      </h2>
+      <p style={{ color: "#8b949e", textAlign: "center", maxWidth: "380px" }}>
+        {isPerm
+          ? "The teacher has permanently removed you from this session. You cannot rejoin."
+          : `You have been banned for ${banned.minutes} minute(s). You may try rejoining after the duration.`}
+      </p>
+      <button className="home-btn primary" style={{ width: "auto", padding: "10px 28px" }} onClick={() => navigate("/")}>← Back to Home</button>
+    </div>
+  );
+}
+
+// ── Shared dropdown item style ────────────────────────────────────────────────
+const menuItemStyle = (accentColor) => ({
+  display: "block", width: "100%", padding: "9px 14px",
+  background: "transparent", border: "none",
+  color: accentColor, cursor: "pointer", fontSize: "13px",
+  textAlign: "left", transition: "background 0.15s",
+  fontFamily: "inherit",
+});
+
 return (
   <div className="classroom">
+    {/* ── Right Hamburger Drawer ── */}
+    {isLeftMenuOpen && (
+      <div
+        onClick={() => setIsLeftMenuOpen(false)}
+        style={{
+          position: "fixed", inset: 0, zIndex: 1000,
+          background: "rgba(0,0,0,0.45)", backdropFilter: "blur(2px)"
+        }}
+      />
+    )}
+    <aside style={{
+      position: "fixed", top: 0, right: 0, height: "100vh", width: "240px",
+      background: "linear-gradient(180deg, #0d1117 0%, #161b22 100%)",
+      borderLeft: "1px solid var(--border)",
+      zIndex: 1001,
+      transform: isLeftMenuOpen ? "translateX(0)" : "translateX(100%)",
+      transition: "transform 0.3s cubic-bezier(0.4,0,0.2,1)",
+      display: "flex", flexDirection: "column",
+      boxShadow: isLeftMenuOpen ? "-6px 0 32px rgba(0,0,0,0.6)" : "none"
+    }}>
+      {/* Drawer Header */}
+      <div style={{
+        padding: "20px 16px 16px",
+        borderBottom: "1px solid var(--border)",
+        display: "flex", alignItems: "center", justifyContent: "space-between"
+      }}>
+        <span style={{ fontWeight: "700", fontSize: "15px", color: "var(--text1)", letterSpacing: "0.5px" }}>⚡ Menu</span>
+        <button
+          onClick={() => setIsLeftMenuOpen(false)}
+          style={{ background: "transparent", border: "none", color: "var(--text3)", cursor: "pointer", fontSize: "18px", lineHeight: 1 }}
+        >✕</button>
+      </div>
+
+      {/* Drawer Options */}
+      <nav style={{ flex: 1, padding: "16px 10px", display: "flex", flexDirection: "column", gap: "6px" }}>
+        {/* Export PDF */}
+        <button
+          onClick={() => { handleExportPDF(); setIsLeftMenuOpen(false); }}
+          style={{
+            display: "flex", alignItems: "center", gap: "12px",
+            padding: "12px 14px", borderRadius: "10px",
+            background: "rgba(79,142,247,0.08)", border: "1px solid rgba(79,142,247,0.18)",
+            color: "var(--text1)", cursor: "pointer", fontSize: "14px", fontWeight: "500",
+            transition: "background 0.2s", width: "100%", textAlign: "left"
+          }}
+          onMouseEnter={e => e.currentTarget.style.background="rgba(79,142,247,0.18)"}
+          onMouseLeave={e => e.currentTarget.style.background="rgba(79,142,247,0.08)"}
+        >
+          <FileDown size={18} style={{ color: "#4f8ef7" }} />
+          Export PDF
+        </button>
+
+        {/* Save Snapshot */}
+        <button
+          onClick={() => { handleSaveSnapshot(); setIsLeftMenuOpen(false); }}
+          style={{
+            display: "flex", alignItems: "center", gap: "12px",
+            padding: "12px 14px", borderRadius: "10px",
+            background: "rgba(74,222,128,0.08)", border: "1px solid rgba(74,222,128,0.18)",
+            color: "var(--text1)", cursor: "pointer", fontSize: "14px", fontWeight: "500",
+            transition: "background 0.2s", width: "100%", textAlign: "left"
+          }}
+          onMouseEnter={e => e.currentTarget.style.background="rgba(74,222,128,0.18)"}
+          onMouseLeave={e => e.currentTarget.style.background="rgba(74,222,128,0.08)"}
+        >
+          <Save size={18} style={{ color: "#4ade80" }} />
+          Save Snapshot
+        </button>
+
+        {/* End Class — teacher only */}
+        {role === "teacher" && (
+          <button
+            onClick={() => { handleEndSession(); setIsLeftMenuOpen(false); }}
+            style={{
+              display: "flex", alignItems: "center", gap: "12px",
+              padding: "12px 14px", borderRadius: "10px",
+              background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.22)",
+              color: "var(--text1)", cursor: "pointer", fontSize: "14px", fontWeight: "500",
+              transition: "background 0.2s", width: "100%", textAlign: "left"
+            }}
+            onMouseEnter={e => e.currentTarget.style.background="rgba(239,68,68,0.18)"}
+            onMouseLeave={e => e.currentTarget.style.background="rgba(239,68,68,0.08)"}
+          >
+            <LogOut size={18} style={{ color: "#ef4444" }} />
+            End Class
+          </button>
+        )}
+
+        {/* Leave Session */}
+        <button
+          onClick={() => navigate("/")}
+          style={{
+            display: "flex", alignItems: "center", gap: "12px",
+            padding: "12px 14px", borderRadius: "10px",
+            background: "rgba(148,163,184,0.06)", border: "1px solid rgba(148,163,184,0.15)",
+            color: "var(--text1)", cursor: "pointer", fontSize: "14px", fontWeight: "500",
+            transition: "background 0.2s", width: "100%", textAlign: "left"
+          }}
+          onMouseEnter={e => e.currentTarget.style.background="rgba(148,163,184,0.14)"}
+          onMouseLeave={e => e.currentTarget.style.background="rgba(148,163,184,0.06)"}
+        >
+          <ArrowLeft size={18} style={{ color: "#94a3b8" }} />
+          Leave Session
+        </button>
+      </nav>
+
+      {/* Bottom role / session info */}
+      {sessionCode && (
+        <div style={{
+          padding: "14px 16px",
+          borderTop: "1px solid var(--border)",
+          fontSize: "12px", color: "var(--text3)"
+        }}>
+          Session: <strong style={{ color: "var(--text1)" }}>{sessionCode}</strong>
+        </div>
+      )}
+    </aside>
+
     {/* ── Header ── */}
     <header className="classroom-header">
       <div className="classroom-title-area">
+        {/* Chat button */}
         <button
           onClick={() => setIsSidebarOpen(!isSidebarOpen)}
           style={{ background: "transparent", border: "none", color: "var(--text1)", fontSize: "24px", cursor: "pointer", marginRight: "12px", position: "relative", display: "flex", alignItems: "center" }}
@@ -925,6 +1171,7 @@ return (
               { id: TOOLS.PEN, label: <PenTool size={18} />, title: "Pen" },
               { id: TOOLS.HIGHLIGHTER, label: <Highlighter size={18} />, title: "Highlighter" },
               { id: TOOLS.ERASER, label: <Eraser size={18} />, title: "Eraser" },
+              { id: TOOLS.OBJ_ERASER, label: <Wand2 size={18} />, title: "Object Eraser — click to erase whole stroke" },
               { id: TOOLS.CIRCLE, label: <Circle size={18} />, title: "Circle" },
               { id: TOOLS.RECTANGLE, label: <Square size={18} />, title: "Rectangle" }
             ].map((t) => (
@@ -1126,24 +1373,33 @@ return (
           </button>
         </div>
 
-        <button className="hdr-btn save" onClick={handleExportPDF} title="Export PDF">
-          <FileDown size={18} />
-        </button>
-        <button className="hdr-btn save" onClick={handleSaveSnapshot} title="Save Snapshot">
-          <Save size={18} />
-        </button>
-        {role === "teacher" && (
-          <button className="hdr-btn end" onClick={handleEndSession} title="End Class">
-            <LogOut size={18} />
-          </button>
+        {/* Session code badge — always visible in header */}
+        {sessionCode ? (
+          <span
+            className="classroom-code-badge"
+            onClick={copyCode}
+            title="Click to copy session code"
+            style={{ padding: "6px 12px", fontSize: "12px", letterSpacing: "2px", cursor: "pointer" }}
+          >
+            <Copy size={13} /> {sessionCode}
+          </span>
+        ) : (
+          <span style={{ fontSize: "11px", color: "var(--text3)", padding: "6px 8px" }}>Connecting...</span>
         )}
+
+        {/* Right hamburger menu trigger */}
         <button
-          className="hdr-btn"
-          style={{ background: "var(--bg3)", border: "1px solid var(--border)", color: "var(--text2)", padding: "8px 12px" }}
-          onClick={() => navigate("/")}
-          title="Leave Session"
+          onClick={() => setIsLeftMenuOpen(true)}
+          style={{
+            background: "transparent", border: "none", color: "var(--text1)",
+            cursor: "pointer", display: "flex", alignItems: "center",
+            padding: "6px", borderRadius: "8px", transition: "background 0.2s"
+          }}
+          title="Open Menu"
+          onMouseEnter={e => e.currentTarget.style.background="rgba(255,255,255,0.07)"}
+          onMouseLeave={e => e.currentTarget.style.background="transparent"}
         >
-          <ArrowLeft size={18} />
+          <Menu size={22} />
         </button>
       </div>
     </header>
@@ -1152,30 +1408,62 @@ return (
       {/* ── Sidebar ── */}
       {isSidebarOpen && (
         <aside className="classroom-sidebar">
-          <div className="sidebar-section" style={{ borderBottom: "1px solid var(--border)", padding: "16px 12px", display: "flex", alignItems: "center", gap: "10px", background: "rgba(255,255,255,0.03)" }}>
-            <span className={`classroom-role-pill ${role}`} style={{ margin: 0 }}>
-              {role === "teacher" ? <Crown size={16} /> : <User size={16} />}
-              <span style={{ marginLeft: "6px", fontSize: "12px", fontWeight: "600" }}>{role === "teacher" ? "Teacher" : "Student"}</span>
-            </span>
-            {sessionCode && (
-              <span className="classroom-code-badge" onClick={copyCode} style={{ margin: 0, padding: "4px 8px" }}>
-                <Copy size={14} /> {sessionCode}
-              </span>
-            )}
-          </div>
+
           <div className="sidebar-section">
             <h3>Participants ({members.length})</h3>
             {members.map((m) => (
-              <div className="participant-item" key={m.id}>
+              <div className="participant-item" key={m.id} style={{ position: "relative" }}>
                 <div className={`participant-avatar ${m.role}`}>
                   {m.name.charAt(0).toUpperCase()}
                 </div>
                 <div className="participant-info">
-                  <div className="participant-name">{m.name} {m.id === socket?.id ? "(you)" : ""}</div>
+                  <div className="participant-name">
+                    {m.name} {m.id === socket?.id ? "(you)" : ""}
+                    {m.muted && <span style={{ marginLeft: 6, fontSize: 10, color: "#f59e0b", background: "rgba(245,158,11,0.15)", padding: "1px 5px", borderRadius: 4 }}>muted</span>}
+                  </div>
                   <div className="participant-role">{m.role}</div>
                 </div>
                 {role === "teacher" && m.role !== "teacher" && (
-                  <button className="kick-btn" onClick={() => handleKick(m.id)} title="Remove from class">✕</button>
+                  <div style={{ position: "relative" }}>
+                    <button
+                      className="kick-btn"
+                      title="Manage student"
+                      onClick={() => setActiveStudentMenu(activeStudentMenu === m.id ? null : m.id)}
+                      style={{ background: "rgba(255,255,255,0.07)", border: "1px solid var(--border)", color: "var(--text2)", borderRadius: 6, padding: "3px 7px", cursor: "pointer", fontSize: 14 }}
+                    >⋯</button>
+
+                    {activeStudentMenu === m.id && (
+                      <div style={{
+                        position: "absolute", right: 0, top: "110%", zIndex: 9999,
+                        background: "#1c2128", border: "1px solid var(--border)",
+                        borderRadius: 10, boxShadow: "0 8px 24px rgba(0,0,0,0.6)",
+                        minWidth: 180, overflow: "hidden"
+                      }}>
+                        {/* Mute / Unmute */}
+                        <button onClick={() => handleMuteStudent(m.id, !m.muted)} style={menuItemStyle("#f59e0b")}>
+                          {m.muted ? "🔊 Unmute (Allow Drawing)" : "🔇 Mute (Disallow Drawing)"}
+                        </button>
+                        <div style={{ height: 1, background: "var(--border)", margin: "2px 0" }} />
+                        {/* Temp ban options */}
+                        <div style={{ padding: "4px 10px", fontSize: 10, color: "var(--text3)", textTransform: "uppercase", letterSpacing: 1 }}>Temporary Ban</div>
+                        {[5, 15, 30].map(mins => (
+                          <button key={mins} onClick={() => handleTempBan(m.id, mins)} style={menuItemStyle("#fb923c")}>
+                            ⏳ Ban for {mins} min
+                          </button>
+                        ))}
+                        <div style={{ height: 1, background: "var(--border)", margin: "2px 0" }} />
+                        {/* Perm ban */}
+                        <button onClick={() => handlePermBan(m.id)} style={menuItemStyle("#ef4444")}>
+                          ⛔ Permanent Ban
+                        </button>
+                        <div style={{ height: 1, background: "var(--border)", margin: "2px 0" }} />
+                        {/* Kick */}
+                        <button onClick={() => { handleKick(m.id); setActiveStudentMenu(null); }} style={menuItemStyle("#94a3b8")}>
+                          ✕ Kick (Remove)
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
             ))}

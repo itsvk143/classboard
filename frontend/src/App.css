@@ -370,10 +370,14 @@ body {
 .classroom-code-badge:hover { background: rgba(79,142,247,0.1); }
 
 .classroom-role-pill {
-  padding: 4px 12px;
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
   border-radius: 20px;
   font-size: 12px;
   font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .classroom-role-pill.teacher { background: rgba(245,158,11,0.15); color: var(--teacher); border: 1px solid rgba(245,158,11,0.3); }

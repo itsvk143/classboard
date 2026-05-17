@@ -69,8 +69,21 @@ let persistedSessions = loadSessions();
 let persistedFolders = loadFolders();
 
 // ─── IN-MEMORY ROOM STATE ──────────────────────────────────────────────────────
-// rooms[code] = { code, title, teacher, members:[{id,name,email,role}], canvasState, chats[] }
+// rooms[code] = { code, title, teacher, members:[{id,name,email,role}], canvasState, chats[],
+//                  mutedIds: Set<socketId>, tempBans: Map<email,expireAt>, permBans: Set<email> }
 const rooms = {};
+
+// Persisted permanent bans across server restarts
+// { [code]: [email, ...] }
+const PERMBANS_FILE = path.join(__dirname, "permbans.json");
+function loadPermBans() {
+  if (!fs.existsSync(PERMBANS_FILE)) return {};
+  try { return JSON.parse(fs.readFileSync(PERMBANS_FILE, "utf8")); } catch { return {}; }
+}
+function savePermBans(pb) {
+  fs.writeFileSync(PERMBANS_FILE, JSON.stringify(pb, null, 2));
+}
+let permBansStore = loadPermBans();
 
 function generateCode() {
   return Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -255,8 +268,41 @@ io.on("connection", (socket) => {
       return;
     }
 
-    // If session ended (persisted only, not active), send read-only replay
+    // If session ended (persisted only, not active in memory)
     if (persisted && !room) {
+      const isTeacherReconnect = email && email.toLowerCase() === TEACHER_EMAIL;
+
+      if (isTeacherReconnect && persisted.active !== false) {
+        // Teacher reconnecting after server restart — restore the live room
+        console.log(`Teacher reconnecting — restoring room ${roomCode}`);
+        const lastSnapshot = persisted.snapshots?.length
+          ? persisted.snapshots[persisted.snapshots.length - 1]?.dataURL
+          : null;
+
+        rooms[roomCode] = {
+          code: roomCode,
+          title: persisted.title,
+          teacher: { id: socket.id, name, email },
+          members: [{ id: socket.id, name, email, role: "teacher", muted: false }],
+          canvasState: lastSnapshot,
+          chats: [],
+          active: true,
+          mutedIds: new Set(),
+          tempBans: new Map(),
+        };
+
+        socket.join(roomCode);
+        socket.emit("session-joined", {
+          code: roomCode,
+          room: rooms[roomCode],
+          canvasState: lastSnapshot,
+          chats: [],
+          role: "teacher",
+        });
+        return;
+      }
+
+      // Everyone else (students or ended sessions) → read-only replay
       socket.emit("session-replay", {
         session: persisted,
         readOnly: true,
@@ -268,7 +314,26 @@ io.on("connection", (socket) => {
     const isTeacher = email && email.toLowerCase() === TEACHER_EMAIL;
     const role = isTeacher ? "teacher" : "student";
 
-    const member = { id: socket.id, name, email, role };
+    if (!isTeacher) {
+      // Permanent ban check
+      const pb = (permBansStore[roomCode] || []).map(e => e.toLowerCase());
+      if (pb.includes((email || "").toLowerCase())) {
+        socket.emit("error-msg", { msg: "You have been permanently banned from this session." });
+        return;
+      }
+      // Temp ban check
+      const tempBan = room.tempBans && room.tempBans.get((email || "").toLowerCase());
+      if (tempBan && Date.now() < tempBan) {
+        const mins = Math.ceil((tempBan - Date.now()) / 60000);
+        socket.emit("error-msg", { msg: `You are temporarily banned. Try again in ${mins} minute(s).` });
+        return;
+      }
+    }
+
+    if (!room.mutedIds) room.mutedIds = new Set();
+    if (!room.tempBans) room.tempBans = new Map();
+
+    const member = { id: socket.id, name, email, role, muted: false };
     room.members.push(member);
 
     // Track in persisted
@@ -381,6 +446,66 @@ io.on("connection", (socket) => {
     io.to(code).emit("session-ended", { code });
     delete rooms[code];
     console.log(`Session ${code} ended`);
+  });
+
+  // ── Mute / Unmute a student (disallow/allow drawing) ────────────────────
+  socket.on("mute-student", ({ code, targetId, muted }) => {
+    const room = rooms[code];
+    if (!room) return;
+    const me = room.members.find(m => m.id === socket.id);
+    if (!me || me.role !== "teacher") return;
+    const target = room.members.find(m => m.id === targetId);
+    if (!target || target.role === "teacher") return;
+
+    target.muted = muted;
+    if (muted) room.mutedIds.add(targetId);
+    else room.mutedIds.delete(targetId);
+
+    io.to(targetId).emit(muted ? "you-were-muted" : "you-were-unmuted", {});
+    io.to(code).emit("members-updated", { members: room.members });
+    console.log(`Student ${target.name} ${muted ? "muted" : "unmuted"} in ${code}`);
+  });
+
+  // ── Temporary ban (kick + block for N minutes) ───────────────────────────
+  socket.on("temp-ban-student", ({ code, targetId, minutes }) => {
+    const room = rooms[code];
+    if (!room) return;
+    const me = room.members.find(m => m.id === socket.id);
+    if (!me || me.role !== "teacher") return;
+    const target = room.members.find(m => m.id === targetId);
+    if (!target || target.role === "teacher") return;
+
+    const expiry = Date.now() + minutes * 60 * 1000;
+    room.tempBans.set((target.email || "").toLowerCase(), expiry);
+
+    io.to(targetId).emit("you-were-banned", { type: "temp", minutes });
+    room.members = room.members.filter(m => m.id !== targetId);
+    io.to(code).emit("members-updated", { members: room.members });
+    // Auto-lift after duration
+    setTimeout(() => {
+      if (room.tempBans) room.tempBans.delete((target.email || "").toLowerCase());
+    }, minutes * 60 * 1000);
+    console.log(`Student ${target.name} temp-banned for ${minutes} min in ${code}`);
+  });
+
+  // ── Permanent ban (kick + blacklist email) ───────────────────────────────
+  socket.on("perm-ban-student", ({ code, targetId }) => {
+    const room = rooms[code];
+    if (!room) return;
+    const me = room.members.find(m => m.id === socket.id);
+    if (!me || me.role !== "teacher") return;
+    const target = room.members.find(m => m.id === targetId);
+    if (!target || target.role === "teacher") return;
+
+    if (!permBansStore[code]) permBansStore[code] = [];
+    const lEmail = (target.email || "").toLowerCase();
+    if (!permBansStore[code].includes(lEmail)) permBansStore[code].push(lEmail);
+    savePermBans(permBansStore);
+
+    io.to(targetId).emit("you-were-banned", { type: "perm" });
+    room.members = room.members.filter(m => m.id !== targetId);
+    io.to(code).emit("members-updated", { members: room.members });
+    console.log(`Student ${target.name} permanently banned from ${code}`);
   });
 
   // ── Kick a participant (teacher only) ────────────────────────────────────
