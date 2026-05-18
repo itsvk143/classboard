@@ -1,330 +1,327 @@
 const express = require("express");
-const cors = require("cors");
-const http = require("http");
+const cors    = require("cors");
+const http    = require("http");
 const { Server } = require("socket.io");
-const path = require("path");
-const fs = require("fs");
-const dotenv = require("dotenv");
+const path    = require("path");
+const dotenv  = require("dotenv");
 
 dotenv.config({ path: "../.env" });
 
-const app = express();
+const { connectDB, Session, Snapshot, Folder } = require("./db");
+
+const app    = express();
 const server = http.createServer(app);
-const io = new Server(server, {
+const io     = new Server(server, {
   pingTimeout: 60000,
-  maxHttpBufferSize: 1e8, // 100 MB limit for large canvases
+  maxHttpBufferSize: 5e7,          // 50 MB (was 100 MB — reduced since we optimise quality)
   cors: { origin: "*" },
   connectionStateRecovery: {},
 });
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: "50mb" }));
 
-// ─── CONFIG ──────────────────────────────────────────────────────────────────
+// ─── CONFIG ───────────────────────────────────────────────────────────────────
 const TEACHER_EMAIL = (process.env.TEACHER_EMAIL || "itsvikash143@gmail.com").toLowerCase();
-const SESSIONS_FILE = path.join(__dirname, "sessions.json");
-const FOLDERS_FILE = path.join(__dirname, "folders.json");
-const PORT = process.env.PORT || 3001;
+const PORT          = process.env.PORT || 3001;
 
-// ─── PERSISTENCE (file-based) ─────────────────────────────────────────────────
-/**
- * sessions.json structure:
- * {
- *   "CLASS_CODE": {
- *     code: "CLASS_CODE",
- *     title: "Session Title",
- *     createdBy: "teacher name",
- *     createdAt: ISO string,
- *     endedAt: ISO string | null,
- *     active: boolean,
- *     participants: [{ name, email, role }],
- *     snapshots: [{ timestamp, dataURL }],   // periodic canvas saves
- *     chats: [{ sender, message, timestamp }]
- *   }
- * }
- */
-function loadSessions() {
-  if (!fs.existsSync(SESSIONS_FILE)) return {};
-  try {
-    return JSON.parse(fs.readFileSync(SESSIONS_FILE, "utf8"));
-  } catch {
-    return {};
-  }
-}
-
-function saveSessions(sessions) {
-  fs.writeFileSync(SESSIONS_FILE, JSON.stringify(sessions, null, 2));
-}
-
-function loadFolders() {
-  if (!fs.existsSync(FOLDERS_FILE)) return [];
-  try { return JSON.parse(fs.readFileSync(FOLDERS_FILE, "utf8")); } catch { return []; }
-}
-
-function saveFolders(folders) {
-  fs.writeFileSync(FOLDERS_FILE, JSON.stringify(folders, null, 2));
-}
-
-let persistedSessions = loadSessions();
-let persistedFolders = loadFolders();
-
-// ─── IN-MEMORY ROOM STATE ──────────────────────────────────────────────────────
-// rooms[code] = { code, title, teacher, members:[{id,name,email,role}], canvasState, chats[],
-//                  mutedIds: Set<socketId>, tempBans: Map<email,expireAt>, permBans: Set<email> }
+// ─── IN-MEMORY ROOM STATE ─────────────────────────────────────────────────────
+// rooms[code] = { code, title, teacher, members, canvasState, chats[],
+//                 classLocked, mutedIds: Set, tempBans: Map }
 const rooms = {};
-
-// Persisted permanent bans across server restarts
-// { [code]: [email, ...] }
-const PERMBANS_FILE = path.join(__dirname, "permbans.json");
-function loadPermBans() {
-  if (!fs.existsSync(PERMBANS_FILE)) return {};
-  try { return JSON.parse(fs.readFileSync(PERMBANS_FILE, "utf8")); } catch { return {}; }
-}
-function savePermBans(pb) {
-  fs.writeFileSync(PERMBANS_FILE, JSON.stringify(pb, null, 2));
-}
-let permBansStore = loadPermBans();
 
 function generateCode() {
   return Math.random().toString(36).substring(2, 8).toUpperCase();
 }
 
+// Helper: upsert a snapshot (keep only 1 per session)
+async function saveSnapshot(sessionCode, dataURL, isFinal = false) {
+  // Replace the existing snapshot (or insert if first time)
+  await Snapshot.findOneAndUpdate(
+    { sessionCode },
+    { dataURL, timestamp: new Date(), isFinal },
+    { upsert: true, new: true }
+  );
+  await Session.updateOne({ code: sessionCode }, { $inc: { snapshotCount: 0 }, $set: { snapshotCount: 1 } });
+}
+
 // ─── REST API ─────────────────────────────────────────────────────────────────
-// Get all past sessions (for session history)
-app.get("/api/sessions", (req, res) => {
-  const list = Object.values(persistedSessions).map((s) => ({
-    code: s.code,
-    title: s.title,
-    createdBy: s.createdBy,
-    createdAt: s.createdAt,
-    endedAt: s.endedAt,
-    active: s.active,
-    participantCount: (s.participants || []).length,
-    snapshotCount: (s.snapshots || []).length,
-    folder: s.folder || "",
-  }));
-  res.json(list.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
+
+// List all sessions (no snapshot blob — keeps response tiny)
+app.get("/api/sessions", async (req, res) => {
+  try {
+    const sessions = await Session.find(
+      {},
+      "code title createdBy createdAt endedAt active folder snapshotCount participants"
+    ).lean().sort({ createdAt: -1 });
+
+    res.json(sessions.map(s => ({
+      code:             s.code,
+      title:            s.title,
+      createdBy:        s.createdBy,
+      createdAt:        s.createdAt,
+      endedAt:          s.endedAt,
+      active:           s.active,
+      folder:           s.folder || "",
+      snapshotCount:    s.snapshotCount || 0,
+      participantCount: (s.participants || []).length,
+    })));
+  } catch (e) {
+    console.error("GET /api/sessions:", e.message);
+    res.status(500).json({ error: "DB error" });
+  }
+});
+
+// Get single session + its snapshot (for replay)
+app.get("/api/sessions/:code", async (req, res) => {
+  try {
+    const code    = req.params.code.toUpperCase();
+    const session = await Session.findOne({ code }).lean();
+    if (!session) return res.status(404).json({ error: "Session not found" });
+
+    const snap = await Snapshot.findOne({ sessionCode: code }).lean();
+    res.json({
+      ...session,
+      snapshots: snap ? [{ timestamp: snap.timestamp, dataURL: snap.dataURL }] : [],
+    });
+  } catch (e) {
+    console.error("GET /api/sessions/:code:", e.message);
+    res.status(500).json({ error: "DB error" });
+  }
 });
 
 // Update session folder
-app.patch("/api/sessions/:code/folder", (req, res) => {
-  const code = req.params.code.toUpperCase();
-  const s = persistedSessions[code];
-  if (!s) return res.status(404).json({ error: "Session not found" });
-  s.folder = req.body.folder || "";
-  saveSessions(persistedSessions);
-  res.json({ success: true, folder: s.folder });
+app.patch("/api/sessions/:code/folder", async (req, res) => {
+  try {
+    const code    = req.params.code.toUpperCase();
+    const updated = await Session.findOneAndUpdate(
+      { code },
+      { folder: req.body.folder || "" },
+      { new: true }
+    ).lean();
+    if (!updated) return res.status(404).json({ error: "Not found" });
+    res.json({ success: true, folder: updated.folder });
+  } catch (e) {
+    res.status(500).json({ error: "DB error" });
+  }
 });
 
-// Folders endpoints
-app.get("/api/folders", (req, res) => {
-  res.json(persistedFolders);
+// Delete one session
+app.delete("/api/sessions/:code", async (req, res) => {
+  try {
+    const code = req.params.code.toUpperCase();
+    await Session.deleteOne({ code });
+    await Snapshot.deleteMany({ sessionCode: code });
+    console.log(`Session ${code} deleted`);
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: "DB error" });
+  }
 });
 
-app.post("/api/folders", (req, res) => {
-  const { name } = req.body;
-  if (!name) return res.status(400).json({ error: "Name required" });
-  const newFolder = { id: Date.now().toString(), name };
-  persistedFolders.push(newFolder);
-  saveFolders(persistedFolders);
-  res.json(newFolder);
+// Bulk delete
+app.post("/api/sessions/bulk-delete", async (req, res) => {
+  try {
+    const { codes } = req.body;
+    if (!Array.isArray(codes) || codes.length === 0)
+      return res.status(400).json({ error: "codes array required" });
+    const upper = codes.map(c => c.toUpperCase());
+    await Session.deleteMany({ code: { $in: upper } });
+    await Snapshot.deleteMany({ sessionCode: { $in: upper } });
+    res.json({ success: true, deleted: codes.length });
+  } catch (e) {
+    res.status(500).json({ error: "DB error" });
+  }
 });
 
-app.patch("/api/folders/:id", (req, res) => {
-  const { id } = req.params;
-  const { name } = req.body;
-  const folder = persistedFolders.find(f => f.id === id);
-  if (!folder) return res.status(404).json({ error: "Folder not found" });
-  
-  const oldName = folder.name;
-  folder.name = name;
-  
-  let updated = false;
-  Object.values(persistedSessions).forEach(s => {
-    if (s.folder === oldName) {
-      s.folder = name;
-      updated = true;
-    }
-  });
-  if (updated) saveSessions(persistedSessions);
-  
-  saveFolders(persistedFolders);
-  res.json(folder);
+// ─── Folders ──────────────────────────────────────────────────────────────────
+
+app.get("/api/folders", async (req, res) => {
+  try {
+    const folders = await Folder.find({}).lean().sort({ createdAt: 1 });
+    res.json(folders.map(f => ({ id: f.folderId, name: f.name })));
+  } catch (e) {
+    res.status(500).json({ error: "DB error" });
+  }
 });
 
-app.delete("/api/folders/:id", (req, res) => {
-  const { id } = req.params;
-  const folder = persistedFolders.find(f => f.id === id);
-  if (!folder) return res.status(404).json({ error: "Folder not found" });
-  
-  const oldName = folder.name;
-  persistedFolders = persistedFolders.filter(f => f.id !== id);
-  
-  let updated = false;
-  Object.values(persistedSessions).forEach(s => {
-    if (s.folder === oldName) {
-      s.folder = "";
-      updated = true;
-    }
-  });
-  if (updated) saveSessions(persistedSessions);
-  
-  saveFolders(persistedFolders);
-  res.json({ success: true });
+app.post("/api/folders", async (req, res) => {
+  try {
+    const { name } = req.body;
+    if (!name) return res.status(400).json({ error: "Name required" });
+    const id     = Date.now().toString();
+    const folder = await Folder.create({ folderId: id, name });
+    res.json({ id: folder.folderId, name: folder.name });
+  } catch (e) {
+    res.status(500).json({ error: "DB error" });
+  }
 });
 
-// Get a specific session (with last snapshot for whiteboard replay)
-app.get("/api/sessions/:code", (req, res) => {
-  const s = persistedSessions[req.params.code.toUpperCase()];
-  if (!s) return res.status(404).json({ error: "Session not found" });
-  res.json(s);
+app.patch("/api/folders/:id", async (req, res) => {
+  try {
+    const { id }   = req.params;
+    const { name } = req.body;
+    const folder   = await Folder.findOne({ folderId: id });
+    if (!folder) return res.status(404).json({ error: "Folder not found" });
+    const oldName  = folder.name;
+    folder.name    = name;
+    await folder.save();
+    // Rename folder reference on all sessions
+    await Session.updateMany({ folder: oldName }, { folder: name });
+    res.json({ id: folder.folderId, name: folder.name });
+  } catch (e) {
+    res.status(500).json({ error: "DB error" });
+  }
 });
 
-// Delete a single session by code
-app.delete("/api/sessions/:code", (req, res) => {
-  const code = req.params.code.toUpperCase();
-  if (!persistedSessions[code]) return res.status(404).json({ error: "Session not found" });
-  delete persistedSessions[code];
-  saveSessions(persistedSessions);
-  console.log(`Session ${code} deleted`);
-  res.json({ success: true });
+app.delete("/api/folders/:id", async (req, res) => {
+  try {
+    const { id }  = req.params;
+    const folder  = await Folder.findOne({ folderId: id });
+    if (!folder) return res.status(404).json({ error: "Folder not found" });
+    const oldName = folder.name;
+    await folder.deleteOne();
+    await Session.updateMany({ folder: oldName }, { folder: "" });
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: "DB error" });
+  }
 });
 
-// Bulk delete sessions by array of codes
-app.post("/api/sessions/bulk-delete", (req, res) => {
-  const { codes } = req.body;
-  if (!Array.isArray(codes) || codes.length === 0)
-    return res.status(400).json({ error: "codes array required" });
-  codes.forEach(c => {
-    const code = c.toUpperCase();
-    if (persistedSessions[code]) {
-      delete persistedSessions[code];
-      console.log(`Session ${code} deleted (bulk)`);
-    }
-  });
-  saveSessions(persistedSessions);
-  res.json({ success: true, deleted: codes.length });
-});
-
-// Deployment
+// ─── Serve frontend in production ─────────────────────────────────────────────
 const __dirname1 = path.resolve();
 if (process.env.NODE_ENV === "production") {
   app.use(express.static(path.join(__dirname1, "./frontend/build")));
-  app.get("*", (req, res) => {
-    res.sendFile(path.resolve(__dirname1, "frontend", "build", "index.html"));
-  });
+  app.get("*", (req, res) =>
+    res.sendFile(path.resolve(__dirname1, "frontend", "build", "index.html"))
+  );
 } else {
   app.get("/", (req, res) => res.send("ClassBoard API running"));
 }
 
-server.listen(PORT, () => console.log(`ClassBoard server on port ${PORT}`));
-
-// ─── SOCKET.IO ────────────────────────────────────────────────────────────────
+// ─── SOCKET.IO ───────────────────────────────────────────────────────────────
 io.on("connection", (socket) => {
   console.log("connected:", socket.id);
 
-  // ── Create a new class session (teacher only) ───────────────────────────
-  socket.on("create-session", ({ name, email, title }) => {
-
+  // ── Create a new class session (teacher only) ─────────────────────────────
+  socket.on("create-session", async ({ name, email, title }) => {
     const code = generateCode();
+
+    // In-memory room
     rooms[code] = {
       code,
       title: title || "Untitled Class",
-      teacher: { id: socket.id, name, email },
-      members: [{ id: socket.id, name, email, role: "teacher" }],
+      teacher:     { id: socket.id, name, email },
+      members:     [{ id: socket.id, name, email, role: "teacher" }],
       canvasState: null,
-      chats: [],
-      active: true,
+      chats:       [],
+      active:      true,
       classLocked: false,
-      mutedIds: new Set(),
-      tempBans: new Map(),
+      mutedIds:    new Set(),
+      tempBans:    new Map(),
     };
 
-    // Persist
-    persistedSessions[code] = {
-      code,
-      title: title || "Untitled Class",
-      createdBy: name,
-      teacherEmail: email,
-      createdAt: new Date().toISOString(),
-      endedAt: null,
-      active: true,
-      participants: [{ name, email, role: "teacher" }],
-      snapshots: [],
-      chats: [],
-    };
-    saveSessions(persistedSessions);
+    // Persist to MongoDB (lightweight — no snapshot yet)
+    try {
+      await Session.create({
+        code,
+        title:        title || "Untitled Class",
+        createdBy:    name,
+        teacherEmail: (email || "").toLowerCase(),
+        createdAt:    new Date(),
+        active:       true,
+        participants: [{ name, email, role: "teacher" }],
+      });
+    } catch (e) {
+      console.error("create-session DB error:", e.message);
+    }
 
     socket.join(code);
     socket.emit("session-created", { code, room: rooms[code] });
     console.log(`Session created: ${code} by ${name}`);
   });
 
-  // ── Join an existing session ────────────────────────────────────────────
-  socket.on("join-session", ({ name, email, code }) => {
+  // ── Join an existing session ───────────────────────────────────────────────
+  socket.on("join-session", async ({ name, email, code }) => {
     const roomCode = code.toUpperCase();
-    const room = rooms[roomCode];
-    const persisted = persistedSessions[roomCode];
+    const room     = rooms[roomCode];
+
+    // Look up persisted session
+    let persisted;
+    try {
+      persisted = await Session.findOne({ code: roomCode }).lean();
+    } catch (e) {
+      console.error("join-session DB error:", e.message);
+    }
 
     if (!room && !persisted) {
       socket.emit("error-msg", { msg: `No session found with code "${roomCode}".` });
       return;
     }
 
-    // If session ended (persisted only, not active in memory)
-    if (persisted && !room) {
+    // ── Not in memory (server restarted or ended session) ─────────────────────
+    if (!room) {
       const isTeacherReconnect = email && email.toLowerCase() === TEACHER_EMAIL;
 
       if (isTeacherReconnect && persisted.active !== false) {
-        // Teacher reconnecting after server restart — restore the live room
+        // Restore room from DB
         console.log(`Teacher reconnecting — restoring room ${roomCode}`);
-        const lastSnapshot = persisted.snapshots?.length
-          ? persisted.snapshots[persisted.snapshots.length - 1]?.dataURL
-          : null;
+        let canvasState = null;
+        try {
+          const snap = await Snapshot.findOne({ sessionCode: roomCode }).lean();
+          canvasState = snap ? snap.dataURL : null;
+        } catch {}
 
         rooms[roomCode] = {
-          code: roomCode,
-          title: persisted.title,
-          teacher: { id: socket.id, name, email },
-          members: [{ id: socket.id, name, email, role: "teacher", muted: false }],
-          canvasState: lastSnapshot,
-          chats: [],
-          active: true,
-          mutedIds: new Set(),
-          tempBans: new Map(),
+          code:        roomCode,
+          title:       persisted.title,
+          teacher:     { id: socket.id, name, email },
+          members:     [{ id: socket.id, name, email, role: "teacher", muted: false }],
+          canvasState,
+          chats:       [],
+          active:      true,
+          classLocked: false,
+          mutedIds:    new Set(),
+          tempBans:    new Map(),
         };
 
         socket.join(roomCode);
         socket.emit("session-joined", {
-          code: roomCode,
-          room: rooms[roomCode],
-          canvasState: lastSnapshot,
-          chats: [],
-          role: "teacher",
+          code:        roomCode,
+          room:        rooms[roomCode],
+          canvasState,
+          chats:       [],
+          role:        "teacher",
         });
         return;
       }
 
-      // Everyone else (students or ended sessions) → read-only replay
+      // Ended session or student → read-only replay with last snapshot
+      let snapshots = [];
+      try {
+        const snap = await Snapshot.findOne({ sessionCode: roomCode }).lean();
+        if (snap) snapshots = [{ timestamp: snap.timestamp, dataURL: snap.dataURL }];
+      } catch {}
+
       socket.emit("session-replay", {
-        session: persisted,
+        session:  { ...persisted, snapshots },
         readOnly: true,
       });
       return;
     }
 
-    // Verify participant is allowed (teacher or any registered member)
+    // ── Active room ────────────────────────────────────────────────────────────
     const isTeacher = email && email.toLowerCase() === TEACHER_EMAIL;
-    const role = isTeacher ? "teacher" : "student";
+    const role      = isTeacher ? "teacher" : "student";
 
     if (!isTeacher) {
-      // Permanent ban check
-      const pb = (permBansStore[roomCode] || []).map(e => e.toLowerCase());
-      if (pb.includes((email || "").toLowerCase())) {
+      // Permanent ban check (from DB)
+      const permBans = (persisted?.permBans || []).map(e => e.toLowerCase());
+      if (permBans.includes((email || "").toLowerCase())) {
         socket.emit("error-msg", { msg: "You have been permanently banned from this session." });
         return;
       }
-      // Temp ban check
+      // Temp ban check (in-memory)
       const tempBan = room.tempBans && room.tempBans.get((email || "").toLowerCase());
       if (tempBan && Date.now() < tempBan) {
         const mins = Math.ceil((tempBan - Date.now()) / 60000);
@@ -339,39 +336,32 @@ io.on("connection", (socket) => {
     const member = { id: socket.id, name, email, role, muted: false };
     room.members.push(member);
 
-    // Track in persisted
+    // Track participant in DB (async, fire-and-forget)
     if (persisted) {
-      const already = persisted.participants.find((p) => p.email === email);
-      if (!already) {
-        persisted.participants.push({ name, email, role });
-        saveSessions(persistedSessions);
+      const alreadyIn = (persisted.participants || []).some(p => p.email === email);
+      if (!alreadyIn) {
+        Session.updateOne({ code: roomCode }, { $addToSet: { participants: { name, email, role } } })
+          .catch(e => console.error("participant update error:", e.message));
       }
     }
 
     socket.join(roomCode);
-
-    // Send room info + current canvas state to new joiner
     socket.emit("session-joined", {
-      code: roomCode,
-      room: {
-        ...room,
-        members: room.members,
-      },
+      code:       roomCode,
+      room:       { ...room, members: room.members },
       canvasState: room.canvasState,
-      chats: room.chats,
+      chats:      room.chats,
       role,
     });
-
-    // Notify everyone else
     socket.to(roomCode).emit("member-joined", { member, members: room.members });
     console.log(`${name} joined session ${roomCode} as ${role}`);
   });
 
-  // ── Canvas drawing (broadcast to room) ─────────────────────────────────
+  // ── Canvas drawing ─────────────────────────────────────────────────────────
   socket.on("canvas-draw", ({ code, dataURL }) => {
     const room = rooms[code];
     if (!room) return;
-    room.canvasState = dataURL; // keep latest
+    room.canvasState = dataURL;
     socket.to(code).emit("canvas-update", { dataURL, senderId: socket.id });
   });
 
@@ -383,67 +373,64 @@ io.on("connection", (socket) => {
     socket.to(code).emit("draw-shape", { tool, start, end, color, stroke, isPreview, senderId: socket.id });
   });
 
-  // ── Laser Pointer ───────────────────────────────────────────────────────
+  // ── Laser Pointer ──────────────────────────────────────────────────────────
   socket.on("laser-move", ({ code, x, y, color }) => {
     socket.to(code).emit("laser-move", { senderId: socket.id, x, y, color });
   });
-
   socket.on("laser-stop", ({ code }) => {
     socket.to(code).emit("laser-stop", { senderId: socket.id });
   });
 
-  // ── Save canvas snapshot (periodically called by teacher or on demand) ──
-  socket.on("save-snapshot", ({ code, dataURL }) => {
-    const persisted = persistedSessions[code];
-    if (!persisted) return;
-    const snap = { timestamp: new Date().toISOString(), dataURL };
-    persisted.snapshots.push(snap);
-    // Keep only last 20 snapshots to avoid huge files
-    if (persisted.snapshots.length > 20) persisted.snapshots.shift();
-    saveSessions(persistedSessions);
-    socket.emit("snapshot-saved", { timestamp: snap.timestamp });
+  // ── Save snapshot (on demand — "Save Snapshot" button) ────────────────────
+  // Replaces old snapshot: keeps storage at 1 per session
+  socket.on("save-snapshot", async ({ code, dataURL }) => {
+    try {
+      await saveSnapshot(code, dataURL, false);
+      socket.emit("snapshot-saved", { timestamp: new Date().toISOString() });
+      console.log(`Snapshot saved for ${code}`);
+    } catch (e) {
+      console.error("save-snapshot error:", e.message);
+    }
   });
 
-  // ── Chat message in session ─────────────────────────────────────────────
+  // ── Chat ──────────────────────────────────────────────────────────────────
   socket.on("session-chat", ({ code, message, sender, role }) => {
     const room = rooms[code];
     if (!room) return;
     const chat = { sender, message, role, timestamp: new Date().toISOString() };
     room.chats.push(chat);
-    const persisted = persistedSessions[code];
-    if (persisted) {
-      persisted.chats.push(chat);
-      saveSessions(persistedSessions);
-    }
+    // Keep last 200 chats in memory
+    if (room.chats.length > 200) room.chats.shift();
     io.to(code).emit("chat-message", chat);
   });
 
-  // ── Canvas clear (teacher only) ─────────────────────────────────────────
+  // ── Clear canvas (teacher only) ────────────────────────────────────────────
   socket.on("clear-canvas", ({ code }) => {
-    const room = rooms[code];
+    const room   = rooms[code];
     if (!room) return;
-    const member = room.members.find((m) => m.id === socket.id);
+    const member = room.members.find(m => m.id === socket.id);
     if (!member || member.role !== "teacher") return;
     room.canvasState = null;
     io.to(code).emit("canvas-cleared");
   });
 
-  // ── End session (teacher only) ──────────────────────────────────────────
-  socket.on("end-session", ({ code, finalDataURL }) => {
+  // ── End session (teacher only) ─────────────────────────────────────────────
+  socket.on("end-session", async ({ code, finalDataURL }) => {
     const room = rooms[code];
     if (!room) return;
-    const member = room.members.find((m) => m.id === socket.id);
+    const member = room.members.find(m => m.id === socket.id);
     if (!member || member.role !== "teacher") return;
 
-    // Save final snapshot
-    const persisted = persistedSessions[code];
-    if (persisted) {
-      if (finalDataURL) {
-        persisted.snapshots.push({ timestamp: new Date().toISOString(), dataURL: finalDataURL, isFinal: true });
-      }
-      persisted.endedAt = new Date().toISOString();
-      persisted.active = false;
-      saveSessions(persistedSessions);
+    try {
+      // Save final snapshot (replaces any previous)
+      if (finalDataURL) await saveSnapshot(code, finalDataURL, true);
+      // Mark session ended
+      await Session.updateOne(
+        { code },
+        { active: false, endedAt: new Date() }
+      );
+    } catch (e) {
+      console.error("end-session DB error:", e.message);
     }
 
     io.to(code).emit("session-ended", { code });
@@ -451,7 +438,7 @@ io.on("connection", (socket) => {
     console.log(`Session ${code} ended`);
   });
 
-  // ── Lock All Students (mute entire class) ───────────────────────────────────
+  // ── Lock All Students ──────────────────────────────────────────────────────
   socket.on("lock-class", ({ code }) => {
     const room = rooms[code];
     if (!room) return;
@@ -467,10 +454,10 @@ io.on("connection", (socket) => {
       }
     });
     io.to(code).emit("class-locked", { members: room.members });
-    console.log(`Class ${code} locked by teacher`);
+    console.log(`Class ${code} locked`);
   });
 
-  // ── Unlock All Students ────────────────────────────────────────────────
+  // ── Unlock All Students ────────────────────────────────────────────────────
   socket.on("unlock-class", ({ code }) => {
     const room = rooms[code];
     if (!room) return;
@@ -486,32 +473,32 @@ io.on("connection", (socket) => {
       }
     });
     io.to(code).emit("class-unlocked", { members: room.members });
-    console.log(`Class ${code} unlocked by teacher`);
+    console.log(`Class ${code} unlocked`);
   });
 
-  // ── Mute / Unmute a student (disallow/allow drawing) ────────────────────
+  // ── Mute / Unmute a student ────────────────────────────────────────────────
   socket.on("mute-student", ({ code, targetId, muted }) => {
     const room = rooms[code];
     if (!room) return;
-    const me = room.members.find(m => m.id === socket.id);
+    const me     = room.members.find(m => m.id === socket.id);
     if (!me || me.role !== "teacher") return;
     const target = room.members.find(m => m.id === targetId);
     if (!target || target.role === "teacher") return;
 
     target.muted = muted;
     if (muted) room.mutedIds.add(targetId);
-    else room.mutedIds.delete(targetId);
+    else       room.mutedIds.delete(targetId);
 
     io.to(targetId).emit(muted ? "you-were-muted" : "you-were-unmuted", {});
     io.to(code).emit("members-updated", { members: room.members });
-    console.log(`Student ${target.name} ${muted ? "muted" : "unmuted"} in ${code}`);
+    console.log(`${target.name} ${muted ? "muted" : "unmuted"} in ${code}`);
   });
 
-  // ── Temporary ban (kick + block for N minutes) ───────────────────────────
+  // ── Temp ban ───────────────────────────────────────────────────────────────
   socket.on("temp-ban-student", ({ code, targetId, minutes }) => {
     const room = rooms[code];
     if (!room) return;
-    const me = room.members.find(m => m.id === socket.id);
+    const me     = room.members.find(m => m.id === socket.id);
     if (!me || me.role !== "teacher") return;
     const target = room.members.find(m => m.id === targetId);
     if (!target || target.role === "teacher") return;
@@ -522,58 +509,65 @@ io.on("connection", (socket) => {
     io.to(targetId).emit("you-were-banned", { type: "temp", minutes });
     room.members = room.members.filter(m => m.id !== targetId);
     io.to(code).emit("members-updated", { members: room.members });
-    // Auto-lift after duration
     setTimeout(() => {
       if (room.tempBans) room.tempBans.delete((target.email || "").toLowerCase());
     }, minutes * 60 * 1000);
-    console.log(`Student ${target.name} temp-banned for ${minutes} min in ${code}`);
+    console.log(`${target.name} temp-banned ${minutes} min in ${code}`);
   });
 
-  // ── Permanent ban (kick + blacklist email) ───────────────────────────────
-  socket.on("perm-ban-student", ({ code, targetId }) => {
+  // ── Permanent ban ─────────────────────────────────────────────────────────
+  socket.on("perm-ban-student", async ({ code, targetId }) => {
     const room = rooms[code];
     if (!room) return;
-    const me = room.members.find(m => m.id === socket.id);
+    const me     = room.members.find(m => m.id === socket.id);
     if (!me || me.role !== "teacher") return;
     const target = room.members.find(m => m.id === targetId);
     if (!target || target.role === "teacher") return;
 
-    if (!permBansStore[code]) permBansStore[code] = [];
     const lEmail = (target.email || "").toLowerCase();
-    if (!permBansStore[code].includes(lEmail)) permBansStore[code].push(lEmail);
-    savePermBans(permBansStore);
+    try {
+      await Session.updateOne({ code }, { $addToSet: { permBans: lEmail } });
+    } catch (e) {
+      console.error("perm-ban DB error:", e.message);
+    }
 
     io.to(targetId).emit("you-were-banned", { type: "perm" });
     room.members = room.members.filter(m => m.id !== targetId);
     io.to(code).emit("members-updated", { members: room.members });
-    console.log(`Student ${target.name} permanently banned from ${code}`);
+    console.log(`${target.name} permanently banned from ${code}`);
   });
 
-  // ── Kick a participant (teacher only) ────────────────────────────────────
+  // ── Kick ──────────────────────────────────────────────────────────────────
   socket.on("kick-member", ({ code, targetId }) => {
     const room = rooms[code];
     if (!room) return;
-    const me = room.members.find((m) => m.id === socket.id);
+    const me   = room.members.find(m => m.id === socket.id);
     if (!me || me.role !== "teacher") return;
     io.to(targetId).emit("you-were-removed", {});
-    room.members = room.members.filter((m) => m.id !== targetId);
+    room.members = room.members.filter(m => m.id !== targetId);
     io.to(code).emit("members-updated", { members: room.members });
   });
 
-  // ── Disconnect ──────────────────────────────────────────────────────────
+  // ── Disconnect ────────────────────────────────────────────────────────────
   socket.on("disconnect", () => {
     console.log("disconnected:", socket.id);
-    // Remove member from all rooms they were in
     for (const [code, room] of Object.entries(rooms)) {
-      const idx = room.members.findIndex((m) => m.id === socket.id);
+      const idx = room.members.findIndex(m => m.id === socket.id);
       if (idx > -1) {
         const [left] = room.members.splice(idx, 1);
         io.to(code).emit("member-left", { member: left, members: room.members });
-        // If teacher disconnects, notify room
-        if (left.role === "teacher") {
-          io.to(code).emit("teacher-disconnected", {});
-        }
+        if (left.role === "teacher") io.to(code).emit("teacher-disconnected", {});
       }
     }
   });
 });
+
+// ─── START ───────────────────────────────────────────────────────────────────
+connectDB()
+  .then(() => {
+    server.listen(PORT, () => console.log(`ClassBoard server on port ${PORT}`));
+  })
+  .catch(err => {
+    console.error("Failed to connect to MongoDB:", err.message);
+    process.exit(1);
+  });

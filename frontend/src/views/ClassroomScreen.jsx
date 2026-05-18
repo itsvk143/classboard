@@ -836,9 +836,10 @@ const handleClearCanvas = () => {
 
 const handleSaveSnapshot = () => {
   if (!canvasRef.current || role !== "teacher") return;
-  const dataURL = getWhiteBackgroundDataURL(canvasRef.current, 0.85, liveSelectionRef.current);
-  socket.emit("save-snapshot", { sessionCode, dataURL, isFinal: false });
-  alert("Snapshot saved to session history.");
+  // Quality 0.55 — good enough for history review, saves ~60% storage vs 0.85
+  const dataURL = getWhiteBackgroundDataURL(canvasRef.current, 0.55, liveSelectionRef.current);
+  socket.emit("save-snapshot", { code: sessionCode, dataURL });
+  showToast("📸 Snapshot saved to history.");
 };
 
 const handleExportPDF = () => {
@@ -859,7 +860,8 @@ const handleEndSession = () => {
   const code = sessionCodeRef.current || sessionCode;
   if (!code) { showToast('⚠️ No active session to end.'); return; }
   if (!window.confirm('End this class session for everyone?')) return;
-  const finalDataURL = getWhiteBackgroundDataURL(canvasRef.current, 0.85, liveSelectionRef.current);
+  // Quality 0.7 — final snapshot: good readability, ~40% smaller than 0.95
+  const finalDataURL = getWhiteBackgroundDataURL(canvasRef.current, 0.7, liveSelectionRef.current);
   console.log('Ending session:', code);
   socket.emit('end-session', { code, finalDataURL });
 };
