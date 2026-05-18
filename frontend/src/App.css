@@ -29,7 +29,9 @@ body {
   background: var(--bg);
   color: var(--text);
   min-height: 100vh;
+  min-height: -webkit-fill-available;
   overflow-x: hidden;
+  -webkit-text-size-adjust: 100%;
 }
 
 /* ── App wrapper ─────────────────────────────────────────────────────────── */
@@ -82,7 +84,8 @@ body {
   flex: 1;
   display: flex;
   justify-content: center;
-  min-width: 380px;
+  min-width: 320px;
+  width: 100%;
 }
 
 .home-history-list {
@@ -94,6 +97,20 @@ body {
 @media (max-width: 1100px) {
   .home-history-list {
     grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 960px) {
+  .home-split-layout {
+    flex-direction: column-reverse;
+    gap: 24px;
+  }
+  .home-right-panel {
+    min-width: 100%;
+  }
+  .home-left-panel {
+    max-height: 400px;
+    padding-right: 0;
   }
 }
 
@@ -109,6 +126,9 @@ body {
 @media (max-width: 500px) {
   .home-history-list {
     grid-template-columns: 1fr;
+  }
+  .home-screen {
+    padding: 30px 16px;
   }
 }
 
@@ -303,6 +323,7 @@ body {
   display: flex;
   flex-direction: column;
   height: 100vh;
+  height: -webkit-fill-available;
   background: var(--bg);
   overflow: hidden;
 }
