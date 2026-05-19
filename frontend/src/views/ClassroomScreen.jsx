@@ -94,6 +94,8 @@ export default function ClassroomScreen() {
   const [zoom, setZoom] = useState(1.0); // 1.0 = 100%
   const [showMoreShapes, setShowMoreShapes] = useState(false);
   const [shapeMenuCoords, setShapeMenuCoords] = useState({ top: 0, left: 0 });
+  // Palm rejection: when true only Apple Pencil (pointerType='pen') can draw
+  const [pencilOnly, setPencilOnly] = useState(false);
 
   // Selection state
   const [selection, setSelection] = useState(null);
@@ -317,18 +319,13 @@ export default function ClassroomScreen() {
     img.src = dataURL;
   };
 
+  // Use Pointer Events clientX/clientY directly (no need for e.touches with PointerEvent API)
   const getPos = (e) => {
     if (!canvasRef.current) return { x: 0, y: 0 };
     const rect = canvasRef.current.getBoundingClientRect();
-    if (e.touches && e.touches.length > 0) {
-      return {
-        x: (e.touches[0].clientX - rect.left) / zoom,
-        y: (e.touches[0].clientY - rect.top) / zoom,
-      };
-    }
     return {
       x: (e.clientX - rect.left) / zoom,
-      y: (e.clientY - rect.top) / zoom
+      y: (e.clientY - rect.top)  / zoom,
     };
   };
 
@@ -526,7 +523,19 @@ export default function ClassroomScreen() {
 
   const onDown = (e) => {
     if (e.button === 2) return; // ignore right-click
+
+    // ── Palm rejection ────────────────────────────────────────────────────────
+    // When pencilOnly mode is on, only Apple Pencil (pointerType='pen') can draw.
+    // Finger/palm touches are silently ignored.
+    if (pencilOnly && e.pointerType === 'touch') return;
+
+    // If already painting with a different pointer, reject multi-touch draw
+    if (isPainting.current && e.pointerType === 'touch') return;
+
     e.preventDefault();
+
+    // Capture pointer so strokes don't break if pen briefly leaves canvas bounds
+    try { e.currentTarget?.setPointerCapture(e.pointerId); } catch {}
 
     // Block all drawing when muted by teacher
     if (isMuted && role !== 'teacher') {
@@ -598,8 +607,26 @@ export default function ClassroomScreen() {
     }
   };
 
+  // ── onMove: use getCoalescedEvents() to prevent missed strokes on fast writing ──
+  // Without this, the browser may coalesce 5-10 intermediate points into one event,
+  // causing letters to look broken or have missing segments on iPad.
   const onMove = (e) => {
+    // Palm rejection: reject finger/palm in pencil-only mode
+    if (pencilOnly && e.pointerType === 'touch') return;
+
     e.preventDefault();
+
+    // Get ALL intermediate points the browser may have coalesced (critical for iPad)
+    const events = (e.getCoalescedEvents && e.getCoalescedEvents().length > 0)
+      ? e.getCoalescedEvents()
+      : [e];
+
+    for (const coalescedEvent of events) {
+      processMoveEvent(coalescedEvent);
+    }
+  };
+
+  const processMoveEvent = (e) => {
     const pos = getPos(e);
 
     if (isSelectionTool(tool)) {
@@ -692,7 +719,7 @@ export default function ClassroomScreen() {
     }
 
     lastPos.current = pos;
-  };
+  }; // end processMoveEvent
 
   const onUp = (e) => {
     if (!isPainting.current && !isDraggingSelection.current && !isResizingSelection.current && !isRotatingSelection.current) return;
@@ -1362,6 +1389,27 @@ return (
             value={stroke}
             onChange={(e) => setStroke(parseInt(e.target.value))}
           />
+          {/* Palm Rejection Toggle (Apple Pencil mode) */}
+          <div className="toolbar-divider" />
+          <button
+            onClick={() => setPencilOnly(v => !v)}
+            title={pencilOnly ? "Palm Rejection ON — tap to allow finger drawing" : "Palm Rejection OFF — tap to enable Apple Pencil-only mode"}
+            style={{
+              background: pencilOnly ? "rgba(79,142,247,0.2)" : "transparent",
+              border: pencilOnly ? "1px solid rgba(79,142,247,0.5)" : "1px solid transparent",
+              borderRadius: "6px",
+              padding: "4px 8px",
+              cursor: "pointer",
+              fontSize: "16px",
+              lineHeight: 1,
+              color: pencilOnly ? "#4f8ef7" : "var(--text3)",
+              display: "flex", alignItems: "center", gap: 4,
+              transition: "all 0.2s",
+            }}
+          >
+            ✏️
+            {pencilOnly && <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: 0.5 }}>ONLY</span>}
+          </button>
         </div>
 
         {/* Role and Code moved to Sidebar */}
