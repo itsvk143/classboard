@@ -84,6 +84,7 @@ export default function ClassroomScreen() {
   const [stroke, setStroke] = useState(4);
   const isPainting = useRef(false);
   const lastPos = useRef(null);
+  const lastMid = useRef(null); // tracks last midpoint for continuous smooth curves
   const startPos = useRef(null);
   const snapshotRef = useRef(null); // for straight line preview
   const [lasers, setLasers] = useState({});
@@ -613,8 +614,12 @@ export default function ClassroomScreen() {
     if (isShapeTool(tool)) {
       snapshotRef.current = ctxRef.current.getImageData(0, 0, canvasRef.current.width, canvasRef.current.height);
     } else {
+      ctxRef.current.setLineDash([]);
+      ctxRef.current.lineCap  = 'round';
+      ctxRef.current.lineJoin = 'round';
       ctxRef.current.beginPath();
       ctxRef.current.moveTo(pos.x, pos.y);
+      lastMid.current = pos; // initialise lastMid at stroke start
     }
   };
 
@@ -703,22 +708,33 @@ export default function ClassroomScreen() {
       ctxRef.current.putImageData(snapshotRef.current, 0, 0);
       drawShape(ctxRef.current, tool, startPos.current, pos, color, stroke);
     } else if (tool === TOOLS.PEN || tool === TOOLS.HIGHLIGHTER) {
-      ctxRef.current.setLineDash([]);           // ← clear any dash left by selection tool
+      ctxRef.current.setLineDash([]);
+      ctxRef.current.lineCap   = 'round';
+      ctxRef.current.lineJoin  = 'round';
       ctxRef.current.strokeStyle = color;
       ctxRef.current.lineWidth = stroke;
       ctxRef.current.globalAlpha = tool === TOOLS.HIGHLIGHTER ? 0.3 : 1.0;
 
-      const midX = (lastPos.current.x + pos.x) / 2;
-      const midY = (lastPos.current.y + pos.y) / 2;
+      // Proper midpoint-smoothing: draw from lastMid → currentMid using lastPos
+      // as the quadratic control point. Consecutive segments share endpoints
+      // (both end/start at a midpoint) → perfectly continuous, zero gaps.
+      const currentMid = {
+        x: (lastPos.current.x + pos.x) / 2,
+        y: (lastPos.current.y + pos.y) / 2,
+      };
+      const from = lastMid.current || lastPos.current;
       ctxRef.current.beginPath();
-      ctxRef.current.moveTo(lastPos.current.x, lastPos.current.y);
-      ctxRef.current.quadraticCurveTo(lastPos.current.x, lastPos.current.y, midX, midY);
+      ctxRef.current.moveTo(from.x, from.y);
+      ctxRef.current.quadraticCurveTo(lastPos.current.x, lastPos.current.y, currentMid.x, currentMid.y);
       ctxRef.current.stroke();
       ctxRef.current.globalAlpha = 1.0;
 
+      lastMid.current = currentMid; // advance for next segment
       emitStroke(lastPos.current.x, lastPos.current.y, pos.x, pos.y, tool);
     } else if (tool === TOOLS.ERASER) {
-      ctxRef.current.setLineDash([]);           // ← clear any dash
+      ctxRef.current.setLineDash([]);
+      ctxRef.current.lineCap   = 'round';
+      ctxRef.current.lineJoin  = 'round';
       ctxRef.current.strokeStyle = "#ffffff";
       ctxRef.current.lineWidth = stroke * 4;
       ctxRef.current.beginPath();
