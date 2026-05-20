@@ -87,7 +87,9 @@ export default function ClassroomScreen() {
   const lastMid = useRef(null); // tracks last midpoint for continuous smooth curves
   const startPos = useRef(null);
   const snapshotRef = useRef(null); // for straight line preview
-  const [lasers, setLasers] = useState({});
+  const [lasers,          setLasers]          = useState({});
+  const [remoteDrawers,   setRemoteDrawers]   = useState({}); // { socketId: { name, x, y } }
+  const drawCursorThrottle = useRef(0); // ms timestamp of last drawing-cursor emit
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isLeftMenuOpen, setIsLeftMenuOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -289,6 +291,18 @@ export default function ClassroomScreen() {
     });
 
     sock.on("error-msg", ({ msg }) => showToast("⚠️ " + msg));
+
+    // ── Drawing presence ───────────────────────────────────────────────────
+    sock.on("drawing-cursor", ({ senderId, name, x, y }) => {
+      setRemoteDrawers(prev => ({ ...prev, [senderId]: { name, x, y } }));
+    });
+    sock.on("drawing-stop", ({ senderId }) => {
+      setRemoteDrawers(prev => {
+        const next = { ...prev };
+        delete next[senderId];
+        return next;
+      });
+    });
 
     return () => sock.disconnect();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -752,7 +766,17 @@ export default function ClassroomScreen() {
     }
 
     lastPos.current = pos;
+
+    // Throttled drawing-cursor emit — lets others see who is writing (≤30fps)
+    if (socket && name && isPainting.current) {
+      const now = Date.now();
+      if (now - drawCursorThrottle.current >= 33) {
+        drawCursorThrottle.current = now;
+        socket.emit("drawing-cursor", { code: sessionCode, name, x: pos.x, y: pos.y });
+      }
+    }
   }; // end processMoveEvent
+
 
   const onUp = (e) => {
     if (!isPainting.current && !isDraggingSelection.current && !isResizingSelection.current && !isRotatingSelection.current) return;
@@ -833,6 +857,10 @@ export default function ClassroomScreen() {
     // Reset path for next stroke (important for ctx state cleanliness)
     ctxRef.current.beginPath();
     snapshotRef.current = null;
+    lastMid.current = null;
+
+    // Notify others that this user stopped drawing
+    if (socket) socket.emit("drawing-stop", { code: sessionCode });
   };
 
 // ── Chat ─────────────────────────────────────────────────────────────────
@@ -1681,6 +1709,50 @@ return (
                   transition: "left 0.05s linear, top 0.05s linear"
                 }} />
               ))}
+              {/* ── Who is writing: floating name badges ────────────────── */}
+              {Object.entries(remoteDrawers).map(([id, d]) => (
+                <div
+                  key={id}
+                  style={{
+                    position: "absolute",
+                    left: d.x,
+                    top: d.y,
+                    pointerEvents: "none",
+                    zIndex: 120,
+                    transform: "translate(12px, -32px)",
+                    transition: "left 0.04s linear, top 0.04s linear",
+                  }}
+                >
+                  <div style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 5,
+                    background: "rgba(10,14,22,0.88)",
+                    border: "1px solid rgba(79,142,247,0.45)",
+                    borderRadius: 8,
+                    padding: "4px 9px",
+                    boxShadow: "0 3px 12px rgba(0,0,0,0.5)",
+                    backdropFilter: "blur(6px)",
+                    whiteSpace: "nowrap",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: "#e2e8f0",
+                    letterSpacing: 0.3,
+                  }}>
+                    <span style={{ fontSize: 14 }}>✏️</span>
+                    {d.name}
+                  </div>
+                  {/* small triangle pointer */}
+                  <div style={{
+                    width: 0, height: 0,
+                    borderLeft: "6px solid transparent",
+                    borderRight: "6px solid transparent",
+                    borderTop: "6px solid rgba(10,14,22,0.88)",
+                    marginLeft: 10,
+                  }} />
+                </div>
+              ))}
+
               <canvas
                 ref={canvasRef}
                 width={3000}

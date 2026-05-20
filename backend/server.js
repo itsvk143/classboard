@@ -383,6 +383,15 @@ io.on("connection", (socket) => {
     socket.to(code).emit("laser-stop", { senderId: socket.id });
   });
 
+  // ── Drawing presence (who is writing) ─────────────────────────────────────
+  socket.on("drawing-cursor", ({ code, name, x, y }) => {
+    socket.to(code).emit("drawing-cursor", { senderId: socket.id, name, x, y });
+  });
+  socket.on("drawing-stop", ({ code }) => {
+    socket.to(code).emit("drawing-stop", { senderId: socket.id });
+  });
+
+
   // ── Save snapshot (on demand — "Save Snapshot" button) ────────────────────
   // Replaces old snapshot: keeps storage at 1 per session
   socket.on("save-snapshot", async ({ code, dataURL }) => {
