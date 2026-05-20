@@ -96,6 +96,8 @@ export default function ClassroomScreen() {
   const [shapeMenuCoords, setShapeMenuCoords] = useState({ top: 0, left: 0 });
   // Palm rejection: when true only Apple Pencil (pointerType='pen') can draw
   const [pencilOnly, setPencilOnly] = useState(false);
+  // true when pencilOnly was auto-activated by stylus detection (vs manual toggle)
+  const stylusDetected = useRef(false);
 
   // Selection state
   const [selection, setSelection] = useState(null);
@@ -523,6 +525,15 @@ export default function ClassroomScreen() {
 
   const onDown = (e) => {
     if (e.button === 2) return; // ignore right-click
+
+    // ── Auto stylus detection ─────────────────────────────────────────────────
+    // The first time Apple Pencil / any stylus touches the canvas, automatically
+    // enable palm rejection so finger/palm touches are ignored from that point on.
+    if (e.pointerType === 'pen' && !stylusDetected.current) {
+      stylusDetected.current = true;
+      setPencilOnly(true);
+      showToast('✏️ Stylus detected — Palm Rejection enabled automatically');
+    }
 
     // ── Palm rejection ────────────────────────────────────────────────────────
     // When pencilOnly mode is on, only Apple Pencil (pointerType='pen') can draw.
@@ -1379,10 +1390,21 @@ return (
 
       <div className="toolbar-divider" />
 
-      {/* Palm rejection toggle (Apple Pencil mode) */}
+      {/* Palm rejection / Stylus mode toggle */}
       <button
-        onClick={() => setPencilOnly(v => !v)}
-        title={pencilOnly ? "Palm Rejection ON" : "Palm Rejection OFF — enable for Apple Pencil"}
+        onClick={() => {
+          const next = !pencilOnly;
+          setPencilOnly(next);
+          // If user manually disables, clear the auto-detect flag so it can re-trigger
+          if (!next) stylusDetected.current = false;
+        }}
+        title={
+          pencilOnly
+            ? stylusDetected.current
+              ? 'Stylus Auto-Detected — Palm Rejection ON. Tap to disable.'
+              : 'Palm Rejection ON. Tap to disable.'
+            : 'Palm Rejection OFF — will auto-enable when stylus is detected'
+        }
         style={{
           background: pencilOnly ? "rgba(79,142,247,0.2)" : "transparent",
           border: pencilOnly ? "1px solid rgba(79,142,247,0.5)" : "1px solid transparent",
@@ -1392,7 +1414,12 @@ return (
           display: "flex", alignItems: "center", gap: 4, transition: "all 0.2s",
         }}
       >
-        ✏️ {pencilOnly && <span style={{ fontSize: 9, fontWeight: 700 }}>ONLY</span>}
+        ✏️
+        {pencilOnly && (
+          <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: 0.5 }}>
+            {stylusDetected.current ? 'AUTO' : 'ONLY'}
+          </span>
+        )}
       </button>
     </div>
 
