@@ -1186,10 +1186,10 @@ return (
     {/* ── Header ── */}
     <header className="classroom-header">
       <div className="classroom-title-area">
-        {/* Chat button */}
+        {/* Chat / Participants sidebar toggle */}
         <button
           onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-          style={{ background: "transparent", border: "none", color: "var(--text1)", fontSize: "24px", cursor: "pointer", marginRight: "12px", position: "relative", display: "flex", alignItems: "center" }}
+          style={{ background: "transparent", border: "none", color: "var(--text1)", fontSize: "24px", cursor: "pointer", position: "relative", display: "flex", alignItems: "center" }}
           title="Toggle Chat & Participants"
         >
           <Menu size={24} />
@@ -1199,190 +1199,6 @@ return (
             </span>
           )}
         </button>
-        <div className="toolbar" style={{ margin: 0, padding: 0, background: "transparent", border: "none", boxShadow: "none" }}>
-          <div className="toolbar-group">
-            {[
-              { id: TOOLS.SELECT, label: <MousePointer2 size={18} />, title: "Select" },
-              { id: TOOLS.LASSO, label: <Move size={18} />, title: "Lasso Select" },
-              { id: TOOLS.PEN, label: <PenTool size={18} />, title: "Pen" },
-              { id: TOOLS.HIGHLIGHTER, label: <Highlighter size={18} />, title: "Highlighter" },
-              { id: TOOLS.ERASER, label: <Eraser size={18} />, title: "Eraser" },
-              { id: TOOLS.OBJ_ERASER, label: <Wand2 size={18} />, title: "Object Eraser — click to erase whole stroke" },
-              { id: TOOLS.CIRCLE, label: <Circle size={18} />, title: "Circle" },
-              { id: TOOLS.RECTANGLE, label: <Square size={18} />, title: "Rectangle" }
-            ].map((t) => (
-              <React.Fragment key={t.id}>
-                <button
-                  className={`tool-btn ${tool === t.id ? "active" : ""}`}
-                  title={t.title}
-                  onClick={() => setTool(t.id)}
-                >
-                  {t.label}
-                </button>
-                {t.id === TOOLS.ERASER && role === "teacher" && (
-                  <button
-                    className="tool-btn"
-                    onClick={handleClearCanvas}
-                    title="Clear Board"
-                  >
-                    <Trash2 size={18} />
-                  </button>
-                )}
-              </React.Fragment>
-            ))}
-
-            <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
-              <button
-                className={`tool-btn ${[TOOLS.LINE, TOOLS.SQUARE, TOOLS.TRIANGLE, TOOLS.HEXAGON].includes(tool) ? "active" : ""}`}
-                title="More Shapes"
-                onClick={(e) => {
-                  if (!showMoreShapes) {
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    setShapeMenuCoords({ top: rect.bottom + 8, left: rect.left - 20 });
-                  }
-                  setShowMoreShapes(!showMoreShapes);
-                }}
-                style={{ fontSize: "10px", padding: "0 4px", color: "var(--text3)" }}
-              >
-                {showMoreShapes ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-              </button>
-              {showMoreShapes && createPortal(
-                <div style={{
-                  position: "fixed",
-                  top: shapeMenuCoords.top,
-                  left: shapeMenuCoords.left,
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "4px",
-                  background: "var(--bg2)",
-                  padding: "6px",
-                  borderRadius: "8px",
-                  border: "1px solid var(--border)",
-                  zIndex: 9999,
-                  boxShadow: "0 8px 24px rgba(0,0,0,0.6)"
-                }}>
-                  {[
-                    { id: TOOLS.LINE, label: <Minus size={18} />, title: "Straight line" },
-                    { id: TOOLS.SQUARE, label: <Square size={18} />, title: "Square" },
-                    { id: TOOLS.TRIANGLE, label: <Triangle size={18} />, title: "Triangle" },
-                    { id: TOOLS.HEXAGON, label: <Hexagon size={18} />, title: "Hexagon" }
-                  ].map(t => (
-                    <button
-                      key={t.id}
-                      className={`tool-btn ${tool === t.id ? "active" : ""}`}
-                      title={t.title}
-                      onClick={() => { setTool(t.id); setShowMoreShapes(false); }}
-                      style={{ width: "100%", justifyContent: "center" }}
-                    >
-                      {t.label}
-                    </button>
-                  ))}
-                </div>,
-                document.body
-              )}
-            </div>
-
-            {[
-              { id: TOOLS.LASER, label: <Zap size={18} />, title: "Laser Pointer" },
-            ].map((t) => (
-              <React.Fragment key={t.id}>
-                <button
-                  className={`tool-btn ${tool === t.id ? "active" : ""}`}
-                  title={t.title}
-                  onClick={() => setTool(t.id)}
-                >
-                  {t.label}
-                </button>
-              </React.Fragment>
-            ))}
-            <div className="toolbar-divider" />
-
-            <button
-              className="tool-btn"
-              title="Insert Image"
-              onClick={() => document.getElementById("canvas-image-upload").click()}
-            >
-              <ImagePlus size={18} />
-            </button>
-            <input
-              id="canvas-image-upload"
-              type="file"
-              accept="image/*"
-              style={{ display: "none" }}
-              onChange={handleFileUpload}
-            />
-
-            <button
-              className="tool-btn"
-              title="Insert PDF"
-              onClick={() => document.getElementById("canvas-pdf-upload").click()}
-            >
-              <FilePlus2 size={18} />
-            </button>
-            <input
-              id="canvas-pdf-upload"
-              type="file"
-              accept="application/pdf"
-              style={{ display: "none" }}
-              onChange={handleFileUpload}
-            />
-          </div>
-
-          <div className="toolbar-divider" />
-
-          <div className="color-dot">
-            {COLORS.map((c) => (
-              <div
-                key={c}
-                className={`color-swatch ${color === c ? "active" : ""}`}
-                style={{ background: c, border: c === "#ffffff" ? "2px solid #555" : "2px solid transparent" }}
-                onClick={() => { setColor(c); setTool(TOOLS.PEN); }}
-                title={c}
-              />
-            ))}
-            <input
-              type="color"
-              value={color}
-              onChange={(e) => { setColor(e.target.value); setTool(TOOLS.PEN); }}
-              style={{ width: "22px", height: "22px", border: "none", background: "transparent", cursor: "pointer", borderRadius: "50%", overflow: "hidden" }}
-              title="Custom color"
-            />
-          </div>
-
-          <div className="toolbar-divider" />
-          <span style={{ fontSize: "11px", color: "var(--text3)", fontWeight: "600", textTransform: "uppercase" }}>Size</span>
-          <input
-            className="stroke-slider"
-            type="range"
-            min={1}
-            max={30}
-            value={stroke}
-            onChange={(e) => setStroke(parseInt(e.target.value))}
-          />
-          {/* Palm Rejection Toggle (Apple Pencil mode) */}
-          <div className="toolbar-divider" />
-          <button
-            onClick={() => setPencilOnly(v => !v)}
-            title={pencilOnly ? "Palm Rejection ON — tap to allow finger drawing" : "Palm Rejection OFF — tap to enable Apple Pencil-only mode"}
-            style={{
-              background: pencilOnly ? "rgba(79,142,247,0.2)" : "transparent",
-              border: pencilOnly ? "1px solid rgba(79,142,247,0.5)" : "1px solid transparent",
-              borderRadius: "6px",
-              padding: "4px 8px",
-              cursor: "pointer",
-              fontSize: "16px",
-              lineHeight: 1,
-              color: pencilOnly ? "#4f8ef7" : "var(--text3)",
-              display: "flex", alignItems: "center", gap: 4,
-              transition: "all 0.2s",
-            }}
-          >
-            ✏️
-            {pencilOnly && <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: 0.5 }}>ONLY</span>}
-          </button>
-        </div>
-
-        {/* Role and Code moved to Sidebar */}
       </div>
 
       <div className="classroom-header-btns">
@@ -1460,6 +1276,125 @@ return (
         </button>
       </div>
     </header>
+
+    {/* ── Full-width Drawing Toolbar (below header, always visible) ────────── */}
+    <div className="toolbar-bar">
+      {/* Drawing tools */}
+      <div className="toolbar-group">
+        {[
+          { id: TOOLS.SELECT,     label: <MousePointer2 size={18} />, title: "Select" },
+          { id: TOOLS.LASSO,      label: <Move size={18} />,          title: "Lasso Select" },
+          { id: TOOLS.PEN,        label: <PenTool size={18} />,       title: "Pen" },
+          { id: TOOLS.HIGHLIGHTER,label: <Highlighter size={18} />,   title: "Highlighter" },
+          { id: TOOLS.ERASER,     label: <Eraser size={18} />,        title: "Eraser" },
+          { id: TOOLS.OBJ_ERASER, label: <Wand2 size={18} />,         title: "Object Eraser" },
+          { id: TOOLS.CIRCLE,     label: <Circle size={18} />,        title: "Circle" },
+          { id: TOOLS.RECTANGLE,  label: <Square size={18} />,        title: "Rectangle" },
+        ].map((t) => (
+          <React.Fragment key={t.id}>
+            <button className={`tool-btn ${tool === t.id ? "active" : ""}`} title={t.title} onClick={() => setTool(t.id)}>
+              {t.label}
+            </button>
+            {t.id === TOOLS.ERASER && role === "teacher" && (
+              <button className="tool-btn" onClick={handleClearCanvas} title="Clear Board"><Trash2 size={18} /></button>
+            )}
+          </React.Fragment>
+        ))}
+
+        {/* More shapes dropdown */}
+        <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+          <button
+            className={`tool-btn ${[TOOLS.LINE, TOOLS.SQUARE, TOOLS.TRIANGLE, TOOLS.HEXAGON].includes(tool) ? "active" : ""}`}
+            title="More Shapes"
+            onClick={(e) => {
+              if (!showMoreShapes) {
+                const rect = e.currentTarget.getBoundingClientRect();
+                setShapeMenuCoords({ top: rect.bottom + 8, left: rect.left - 20 });
+              }
+              setShowMoreShapes(!showMoreShapes);
+            }}
+            style={{ fontSize: "10px", padding: "0 4px", color: "var(--text3)" }}
+          >
+            {showMoreShapes ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+          </button>
+          {showMoreShapes && createPortal(
+            <div style={{ position: "fixed", top: shapeMenuCoords.top, left: shapeMenuCoords.left, display: "flex", flexDirection: "column", gap: "4px", background: "var(--bg2)", padding: "6px", borderRadius: "8px", border: "1px solid var(--border)", zIndex: 9999, boxShadow: "0 8px 24px rgba(0,0,0,0.6)" }}>
+              {[
+                { id: TOOLS.LINE,     label: <Minus size={18} />,    title: "Straight line" },
+                { id: TOOLS.SQUARE,   label: <Square size={18} />,   title: "Square" },
+                { id: TOOLS.TRIANGLE, label: <Triangle size={18} />, title: "Triangle" },
+                { id: TOOLS.HEXAGON,  label: <Hexagon size={18} />,  title: "Hexagon" },
+              ].map(t => (
+                <button key={t.id} className={`tool-btn ${tool === t.id ? "active" : ""}`} title={t.title}
+                  onClick={() => { setTool(t.id); setShowMoreShapes(false); }}
+                  style={{ width: "100%", justifyContent: "center" }}>
+                  {t.label}
+                </button>
+              ))}
+            </div>,
+            document.body
+          )}
+        </div>
+
+        {/* Laser pointer */}
+        <button className={`tool-btn ${tool === TOOLS.LASER ? "active" : ""}`} title="Laser Pointer" onClick={() => setTool(TOOLS.LASER)}>
+          <Zap size={18} />
+        </button>
+
+        <div className="toolbar-divider" />
+
+        {/* Image / PDF upload */}
+        <button className="tool-btn" title="Insert Image" onClick={() => document.getElementById("canvas-image-upload").click()}>
+          <ImagePlus size={18} />
+        </button>
+        <input id="canvas-image-upload" type="file" accept="image/*" style={{ display: "none" }} onChange={handleFileUpload} />
+        <button className="tool-btn" title="Insert PDF" onClick={() => document.getElementById("canvas-pdf-upload").click()}>
+          <FilePlus2 size={18} />
+        </button>
+        <input id="canvas-pdf-upload" type="file" accept="application/pdf" style={{ display: "none" }} onChange={handleFileUpload} />
+      </div>
+
+      <div className="toolbar-divider" />
+
+      {/* Color palette */}
+      <div className="color-dot">
+        {COLORS.map((c) => (
+          <div key={c} className={`color-swatch ${color === c ? "active" : ""}`}
+            style={{ background: c, border: c === "#ffffff" ? "2px solid #555" : "2px solid transparent" }}
+            onClick={() => { setColor(c); setTool(TOOLS.PEN); }} title={c}
+          />
+        ))}
+        <input type="color" value={color}
+          onChange={(e) => { setColor(e.target.value); setTool(TOOLS.PEN); }}
+          style={{ width: "22px", height: "22px", border: "none", background: "transparent", cursor: "pointer", borderRadius: "50%", overflow: "hidden" }}
+          title="Custom color"
+        />
+      </div>
+
+      <div className="toolbar-divider" />
+
+      {/* Stroke size */}
+      <span style={{ fontSize: "11px", color: "var(--text3)", fontWeight: "600", textTransform: "uppercase", whiteSpace: "nowrap" }}>Size</span>
+      <input className="stroke-slider" type="range" min={1} max={30} value={stroke} onChange={(e) => setStroke(parseInt(e.target.value))} />
+
+      <div className="toolbar-divider" />
+
+      {/* Palm rejection toggle (Apple Pencil mode) */}
+      <button
+        onClick={() => setPencilOnly(v => !v)}
+        title={pencilOnly ? "Palm Rejection ON" : "Palm Rejection OFF — enable for Apple Pencil"}
+        style={{
+          background: pencilOnly ? "rgba(79,142,247,0.2)" : "transparent",
+          border: pencilOnly ? "1px solid rgba(79,142,247,0.5)" : "1px solid transparent",
+          borderRadius: "6px", padding: "4px 8px", cursor: "pointer",
+          fontSize: "16px", lineHeight: 1,
+          color: pencilOnly ? "#4f8ef7" : "var(--text3)",
+          display: "flex", alignItems: "center", gap: 4, transition: "all 0.2s",
+        }}
+      >
+        ✏️ {pencilOnly && <span style={{ fontSize: 9, fontWeight: 700 }}>ONLY</span>}
+      </button>
+    </div>
 
     <div className="classroom-body">
       {/* ── Sidebar ── */}

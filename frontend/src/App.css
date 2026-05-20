@@ -333,29 +333,41 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 16px;
+  padding: 6px 16px;
   background: var(--bg2);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
   gap: 12px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  min-height: 48px;
 }
 
-@media (max-width: 1024px) {
+/* ── Full-width toolbar bar (below header, above canvas) ──────────────────── */
+.toolbar-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.toolbar-bar::-webkit-scrollbar { display: none; }
+
+@media (max-width: 768px) {
   .classroom-header {
-    padding: 8px 12px;
-    gap: 10px;
-    justify-content: center;
+    padding: 6px 10px;
+    gap: 8px;
   }
-  .classroom-title-area {
-    width: 100%;
-    justify-content: center;
-    margin-bottom: 4px;
-  }
-  .toolbar {
-    width: 100%;
-    justify-content: center;
-    order: 3;
+  .toolbar-bar {
+    padding: 4px 8px;
+    gap: 4px;
   }
 }
 
