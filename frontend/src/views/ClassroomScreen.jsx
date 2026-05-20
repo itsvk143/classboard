@@ -696,9 +696,15 @@ export default function ClassroomScreen() {
       ctxRef.current.lineWidth = stroke;
       ctxRef.current.globalAlpha = tool === TOOLS.HIGHLIGHTER ? 0.3 : 1.0;
 
-      // Smoothing with Quadratic Curves for a premium feel
-      const midPoint = { x: (lastPos.current.x + pos.x) / 2, y: (lastPos.current.y + pos.y) / 2 };
-      ctxRef.current.quadraticCurveTo(lastPos.current.x, lastPos.current.y, midPoint.x, midPoint.y);
+      // ── KEY FIX: beginPath + moveTo before EVERY segment ──────────────────
+      // Without this, the path grows with every onMove call and stroke() redraws
+      // the ENTIRE accumulated path each time — causing exponential slowdown that
+      // drops pointer events and makes letters disappear during fast writing.
+      const midX = (lastPos.current.x + pos.x) / 2;
+      const midY = (lastPos.current.y + pos.y) / 2;
+      ctxRef.current.beginPath();
+      ctxRef.current.moveTo(lastPos.current.x, lastPos.current.y);
+      ctxRef.current.quadraticCurveTo(lastPos.current.x, lastPos.current.y, midX, midY);
       ctxRef.current.stroke();
       ctxRef.current.globalAlpha = 1.0;
 
@@ -706,6 +712,9 @@ export default function ClassroomScreen() {
     } else if (tool === TOOLS.ERASER) {
       ctxRef.current.strokeStyle = "#ffffff";
       ctxRef.current.lineWidth = stroke * 4;
+      // Same fix: fresh beginPath per segment prevents accumulation
+      ctxRef.current.beginPath();
+      ctxRef.current.moveTo(lastPos.current.x, lastPos.current.y);
       ctxRef.current.lineTo(pos.x, pos.y);
       ctxRef.current.stroke();
       emitStroke(lastPos.current.x, lastPos.current.y, pos.x, pos.y, tool);
@@ -725,17 +734,19 @@ export default function ClassroomScreen() {
     if (!isPainting.current && !isDraggingSelection.current && !isResizingSelection.current && !isRotatingSelection.current) return;
     const pos = getPos(e);
 
+    // ── Selection drag / resize / rotate end ────────────────────────────────
     if (isDraggingSelection.current || isResizingSelection.current || isRotatingSelection.current) {
       isDraggingSelection.current = false;
       isResizingSelection.current = false;
       isRotatingSelection.current = false;
-      if (liveSelectionRef.current) {
-        setSelection({ ...liveSelectionRef.current });
-      }
-      emitCanvas();
+      if (liveSelectionRef.current) setSelection({ ...liveSelectionRef.current });
+      // Defer toDataURL so it doesn't block pointer events for the next stroke
+      setTimeout(() => emitCanvas(), 0);
       return;
     }
 
+    // Mark painting finished BEFORE anything async
+    const wasPainting = isPainting.current;
     isPainting.current = false;
 
     if (tool === TOOLS.LASER) {
@@ -746,100 +757,59 @@ export default function ClassroomScreen() {
     if (isShapeTool(tool)) {
       ctxRef.current.putImageData(snapshotRef.current, 0, 0);
       drawShape(ctxRef.current, tool, startPos.current, pos, color, stroke);
-
-      // Sync the shape completion
       if (socket) {
-        socket.emit("draw-shape", {
-          code: sessionCode,
-          tool,
-          start: startPos.current,
-          end: pos,
-          color,
-          stroke,
-          isPreview: false
-        });
+        socket.emit("draw-shape", { code: sessionCode, tool, start: startPos.current, end: pos, color, stroke, isPreview: false });
       }
+      if (tool === TOOLS.LINE) emitStroke(startPos.current.x, startPos.current.y, pos.x, pos.y, tool);
+      // Defer heavy toDataURL so next letter's pointerdown isn't delayed
+      setTimeout(() => emitCanvas(), 0);
     } else if (isSelectionTool(tool)) {
       if (liveSelectionRef.current) {
         setSelection({ ...liveSelectionRef.current });
-      }
-    } else if (isPainting.current) {
-      isPainting.current = false;
-      ctxRef.current.putImageData(snapshotRef.current, 0, 0);
-
-      if (tool === TOOLS.SELECT) {
-        const w = Math.abs(pos.x - startPos.current.x);
-        const h = Math.abs(pos.y - startPos.current.y);
-        const x = Math.min(pos.x, startPos.current.x);
-        const y = Math.min(pos.y, startPos.current.y);
-        if (w > 5 && h > 5) {
-          const imgData = ctxRef.current.getImageData(x, y, w, h);
-          setSelection({ type: TOOLS.SELECT, x, y, w, h, imgData, isCut: false });
-        }
-      } else if (tool === TOOLS.LASSO) {
-        if (lassoPath.current.length > 2) {
-          const xs = lassoPath.current.map(p => p.x);
-          const ys = lassoPath.current.map(p => p.y);
-          const minX = Math.min(...xs);
-          const maxX = Math.max(...xs);
-          const minY = Math.min(...ys);
-          const maxY = Math.max(...ys);
-          const w = maxX - minX;
-          const h = maxY - minY;
-
+        if (tool === TOOLS.SELECT) {
+          const w = Math.abs(pos.x - startPos.current.x);
+          const h = Math.abs(pos.y - startPos.current.y);
+          const x = Math.min(pos.x, startPos.current.x);
+          const y = Math.min(pos.y, startPos.current.y);
           if (w > 5 && h > 5) {
-            const originalData = ctxRef.current.getImageData(minX, minY, w, h);
-
-            const offCanvas = document.createElement("canvas");
-            offCanvas.width = w;
-            offCanvas.height = h;
-            const offCtx = offCanvas.getContext("2d");
-
-            offCtx.beginPath();
-            lassoPath.current.forEach((p, i) => {
-              if (i === 0) offCtx.moveTo(p.x - minX, p.y - minY);
-              else offCtx.lineTo(p.x - minX, p.y - minY);
-            });
-            offCtx.closePath();
-            offCtx.clip();
-
-            const srcCanvas = document.createElement("canvas");
-            srcCanvas.width = w;
-            srcCanvas.height = h;
-            srcCanvas.getContext("2d").putImageData(originalData, 0, 0);
-
-            offCtx.drawImage(srcCanvas, 0, 0);
-            const maskedData = offCtx.getImageData(0, 0, w, h);
-
-            setSelection({ type: TOOLS.LASSO, x: minX, y: minY, w, h, imgData: maskedData, isCut: false, path: [...lassoPath.current] });
+            const imgData = ctxRef.current.getImageData(x, y, w, h);
+            setSelection({ type: TOOLS.SELECT, x, y, w, h, imgData, isCut: false });
+          }
+        } else if (tool === TOOLS.LASSO) {
+          if (lassoPath.current.length > 2) {
+            const xs = lassoPath.current.map(p => p.x);
+            const ys = lassoPath.current.map(p => p.y);
+            const minX = Math.min(...xs); const maxX = Math.max(...xs);
+            const minY = Math.min(...ys); const maxY = Math.max(...ys);
+            const w = maxX - minX; const h = maxY - minY;
+            if (w > 5 && h > 5) {
+              const originalData = ctxRef.current.getImageData(minX, minY, w, h);
+              const offCanvas = document.createElement("canvas");
+              offCanvas.width = w; offCanvas.height = h;
+              const offCtx = offCanvas.getContext("2d");
+              offCtx.beginPath();
+              lassoPath.current.forEach((p, i) => { if (i === 0) offCtx.moveTo(p.x - minX, p.y - minY); else offCtx.lineTo(p.x - minX, p.y - minY); });
+              offCtx.closePath(); offCtx.clip();
+              const srcCanvas = document.createElement("canvas");
+              srcCanvas.width = w; srcCanvas.height = h;
+              srcCanvas.getContext("2d").putImageData(originalData, 0, 0);
+              offCtx.drawImage(srcCanvas, 0, 0);
+              const maskedData = offCtx.getImageData(0, 0, w, h);
+              setSelection({ type: TOOLS.LASSO, x: minX, y: minY, w, h, imgData: maskedData, isCut: false, path: [...lassoPath.current] });
+            }
           }
         }
       }
+    } else if (wasPainting) {
+      // Pen / eraser / highlighter — strokes already emitted per-segment via emitStroke.
+      // Emit full canvas state deferred so it doesn't block the next pointerdown.
+      setTimeout(() => emitCanvas(), 0);
     }
 
-
-  if (!isPainting.current) return;
-  isPainting.current = false;
-
-  if (tool === TOOLS.LASER) {
-    if (socket) socket.emit("laser-stop", { code: sessionCode });
-    return;
-  }
-
-  if (isShapeTool(tool)) {
-    const pos = getPos(e);
-    ctxRef.current.putImageData(snapshotRef.current, 0, 0);
-    drawShape(ctxRef.current, tool, startPos.current, pos, color, stroke);
-
-    if (tool === TOOLS.LINE) {
-      emitStroke(startPos.current.x, startPos.current.y, pos.x, pos.y, tool);
-    }
-  }
-
-  emitCanvas();
-  ctxRef.current.beginPath();
-  snapshotRef.current = null;
-};
+    // Reset path for next stroke (important for ctx state cleanliness)
+    ctxRef.current.beginPath();
+    snapshotRef.current = null;
+  };
 
 // ── Chat ─────────────────────────────────────────────────────────────────
 const addSystemChat = (msg) => {
@@ -1749,7 +1719,6 @@ return (
                 onPointerDown={onDown}
                 onPointerMove={onMove}
                 onPointerUp={onUp}
-                onPointerLeave={onUp}
               />
 
               {/* Real-time remote shape previews */}
