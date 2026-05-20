@@ -59,7 +59,10 @@ const Folder   = mongoose.model("Folder",   folderSchema);
 // ─── Connect ─────────────────────────────────────────────────────────────────
 async function connectDB() {
   const uri = process.env.MONGODB_URI;
-  if (!uri) throw new Error("MONGODB_URI is not set in .env");
+  if (!uri) {
+    console.warn("⚠️  MONGODB_URI not set — running in memory-only mode (data lost on restart)");
+    return; // Don't crash — just skip DB
+  }
   await mongoose.connect(uri, { dbName: "classboard" });
   console.log("✅ MongoDB connected");
 }

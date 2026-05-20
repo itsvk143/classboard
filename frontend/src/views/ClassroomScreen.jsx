@@ -703,14 +703,11 @@ export default function ClassroomScreen() {
       ctxRef.current.putImageData(snapshotRef.current, 0, 0);
       drawShape(ctxRef.current, tool, startPos.current, pos, color, stroke);
     } else if (tool === TOOLS.PEN || tool === TOOLS.HIGHLIGHTER) {
+      ctxRef.current.setLineDash([]);           // ← clear any dash left by selection tool
       ctxRef.current.strokeStyle = color;
       ctxRef.current.lineWidth = stroke;
       ctxRef.current.globalAlpha = tool === TOOLS.HIGHLIGHTER ? 0.3 : 1.0;
 
-      // ── KEY FIX: beginPath + moveTo before EVERY segment ──────────────────
-      // Without this, the path grows with every onMove call and stroke() redraws
-      // the ENTIRE accumulated path each time — causing exponential slowdown that
-      // drops pointer events and makes letters disappear during fast writing.
       const midX = (lastPos.current.x + pos.x) / 2;
       const midY = (lastPos.current.y + pos.y) / 2;
       ctxRef.current.beginPath();
@@ -721,9 +718,9 @@ export default function ClassroomScreen() {
 
       emitStroke(lastPos.current.x, lastPos.current.y, pos.x, pos.y, tool);
     } else if (tool === TOOLS.ERASER) {
+      ctxRef.current.setLineDash([]);           // ← clear any dash
       ctxRef.current.strokeStyle = "#ffffff";
       ctxRef.current.lineWidth = stroke * 4;
-      // Same fix: fresh beginPath per segment prevents accumulation
       ctxRef.current.beginPath();
       ctxRef.current.moveTo(lastPos.current.x, lastPos.current.y);
       ctxRef.current.lineTo(pos.x, pos.y);

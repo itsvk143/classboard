@@ -7,7 +7,9 @@ const dotenv  = require("dotenv");
 
 dotenv.config({ path: "../.env" });
 
+const mongoose = require("mongoose");
 const { connectDB, Session, Snapshot, Folder } = require("./db");
+
 
 const app    = express();
 const server = http.createServer(app);
@@ -34,15 +36,15 @@ function generateCode() {
   return Math.random().toString(36).substring(2, 8).toUpperCase();
 }
 
-// Helper: upsert a snapshot (keep only 1 per session)
+// Helper: upsert a snapshot (keep only 1 per session) — skips gracefully if no DB
 async function saveSnapshot(sessionCode, dataURL, isFinal = false) {
-  // Replace the existing snapshot (or insert if first time)
+  if (mongoose.connection.readyState !== 1) return; // no DB connected
   await Snapshot.findOneAndUpdate(
     { sessionCode },
     { dataURL, timestamp: new Date(), isFinal },
     { upsert: true, new: true }
   );
-  await Session.updateOne({ code: sessionCode }, { $inc: { snapshotCount: 0 }, $set: { snapshotCount: 1 } });
+  await Session.updateOne({ code: sessionCode }, { $set: { snapshotCount: 1 } });
 }
 
 // ─── REST API ─────────────────────────────────────────────────────────────────
@@ -563,11 +565,9 @@ io.on("connection", (socket) => {
 });
 
 // ─── START ───────────────────────────────────────────────────────────────────
+// Always start the server — MongoDB is optional (runs in memory-only if not set)
 connectDB()
-  .then(() => {
+  .catch(err => console.error("MongoDB connection failed:", err.message))
+  .finally(() => {
     server.listen(PORT, () => console.log(`ClassBoard server on port ${PORT}`));
-  })
-  .catch(err => {
-    console.error("Failed to connect to MongoDB:", err.message);
-    process.exit(1);
   });
