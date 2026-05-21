@@ -1164,6 +1164,40 @@ return (
           Save Snapshot
         </button>
 
+        {/* Insert Image */}
+        <button
+          onClick={() => { setIsLeftMenuOpen(false); setTimeout(() => document.getElementById("canvas-image-upload").click(), 100); }}
+          style={{
+            display: "flex", alignItems: "center", gap: "12px",
+            padding: "12px 14px", borderRadius: "10px",
+            background: "rgba(168,85,247,0.08)", border: "1px solid rgba(168,85,247,0.2)",
+            color: "var(--text1)", cursor: "pointer", fontSize: "14px", fontWeight: "500",
+            transition: "background 0.2s", width: "100%", textAlign: "left"
+          }}
+          onMouseEnter={e => e.currentTarget.style.background="rgba(168,85,247,0.18)"}
+          onMouseLeave={e => e.currentTarget.style.background="rgba(168,85,247,0.08)"}
+        >
+          <ImagePlus size={18} style={{ color: "#a855f7" }} />
+          Insert Image
+        </button>
+
+        {/* Insert PDF */}
+        <button
+          onClick={() => { setIsLeftMenuOpen(false); setTimeout(() => document.getElementById("canvas-pdf-upload").click(), 100); }}
+          style={{
+            display: "flex", alignItems: "center", gap: "12px",
+            padding: "12px 14px", borderRadius: "10px",
+            background: "rgba(249,115,22,0.08)", border: "1px solid rgba(249,115,22,0.2)",
+            color: "var(--text1)", cursor: "pointer", fontSize: "14px", fontWeight: "500",
+            transition: "background 0.2s", width: "100%", textAlign: "left"
+          }}
+          onMouseEnter={e => e.currentTarget.style.background="rgba(249,115,22,0.18)"}
+          onMouseLeave={e => e.currentTarget.style.background="rgba(249,115,22,0.08)"}
+        >
+          <FilePlus2 size={18} style={{ color: "#f97316" }} />
+          Insert PDF to Board
+        </button>
+
         {/* Lock / Unlock all students — teacher only */}
         {role === "teacher" && (
           <button
@@ -1393,18 +1427,11 @@ return (
           <Zap size={18} />
         </button>
 
-        <div className="toolbar-divider" />
-
-        {/* Image / PDF upload */}
-        <button className="tool-btn" title="Insert Image" onClick={() => document.getElementById("canvas-image-upload").click()}>
-          <ImagePlus size={18} />
-        </button>
-        <input id="canvas-image-upload" type="file" accept="image/*" style={{ display: "none" }} onChange={handleFileUpload} />
-        <button className="tool-btn" title="Insert PDF" onClick={() => document.getElementById("canvas-pdf-upload").click()}>
-          <FilePlus2 size={18} />
-        </button>
-        <input id="canvas-pdf-upload" type="file" accept="application/pdf" style={{ display: "none" }} onChange={handleFileUpload} />
       </div>
+
+      {/* Hidden file inputs — kept here so onChange handler works */}
+      <input id="canvas-image-upload" type="file" accept="image/*" style={{ display: "none" }} onChange={handleFileUpload} />
+      <input id="canvas-pdf-upload" type="file" accept="application/pdf" style={{ display: "none" }} onChange={handleFileUpload} />
 
       <div className="toolbar-divider" />
 
