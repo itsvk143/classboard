@@ -8,7 +8,9 @@ const dotenv  = require("dotenv");
 dotenv.config({ path: "../.env" });
 
 const mongoose = require("mongoose");
-const { connectDB, Session, Snapshot, Folder } = require("./db");
+const jwt     = require("jsonwebtoken");
+const { OAuth2Client } = require("google-auth-library");
+const { connectDB, Session, Snapshot, Folder, User } = require("./db");
 
 
 const app    = express();
@@ -24,8 +26,37 @@ app.use(cors());
 app.use(express.json({ limit: "50mb" }));
 
 // ─── CONFIG ───────────────────────────────────────────────────────────────────
-const TEACHER_EMAIL = (process.env.TEACHER_EMAIL || "itsvikash143@gmail.com").toLowerCase();
-const PORT          = process.env.PORT || 3001;
+const TEACHER_EMAIL  = (process.env.TEACHER_EMAIL  || "itsvikash143@gmail.com").toLowerCase();
+const ADMIN_EMAILS   = (process.env.ADMIN_EMAILS   || TEACHER_EMAIL).toLowerCase().split(",").map(e => e.trim());
+const JWT_SECRET     = process.env.JWT_SECRET      || "classboard_dev_secret_change_in_prod";
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || "";
+const googleClient   = new OAuth2Client(GOOGLE_CLIENT_ID);
+const PORT           = process.env.PORT || 3001;
+
+// ─── AUTH MIDDLEWARE ──────────────────────────────────────────────────────────
+// Reads Bearer JWT from Authorization header, attaches req.user if valid.
+// Routes that call requireAuth will return 401 if the token is missing/invalid.
+const requireAuth = (req, res, next) => {
+  const header = req.headers.authorization || "";
+  const token  = header.startsWith("Bearer ") ? header.slice(7) : null;
+  if (!token) return res.status(401).json({ error: "Unauthorized" });
+  try {
+    req.user = jwt.verify(token, JWT_SECRET);
+    next();
+  } catch {
+    return res.status(401).json({ error: "Invalid token" });
+  }
+};
+
+// Optional auth — attaches req.user if token present, never rejects
+const optionalAuth = (req, res, next) => {
+  const header = req.headers.authorization || "";
+  const token  = header.startsWith("Bearer ") ? header.slice(7) : null;
+  if (token) {
+    try { req.user = jwt.verify(token, JWT_SECRET); } catch {}
+  }
+  next();
+};
 
 // ─── IN-MEMORY ROOM STATE ─────────────────────────────────────────────────────
 // rooms[code] = { code, title, teacher, members, canvasState, chats[],
@@ -47,20 +78,76 @@ async function saveSnapshot(sessionCode, dataURL, isFinal = false) {
   await Session.updateOne({ code: sessionCode }, { $set: { snapshotCount: 1 } });
 }
 
+// ─── AUTH ROUTES ──────────────────────────────────────────────────────────────
+
+// POST /api/auth/google — exchange Google ID token for ClassBoard JWT
+app.post("/api/auth/google", async (req, res) => {
+  try {
+    const { credential } = req.body;
+    if (!credential) return res.status(400).json({ error: "credential required" });
+
+    // Verify the Google ID token
+    const ticket  = await googleClient.verifyIdToken({ idToken: credential, audience: GOOGLE_CLIENT_ID });
+    const payload = ticket.getPayload();
+    const { sub: googleId, email, name, picture } = payload;
+
+    // Determine role: admin emails → admin, everyone else → teacher by default
+    const role = ADMIN_EMAILS.includes(email.toLowerCase()) ? "admin" : "teacher";
+
+    // Upsert user in DB (no-op if MongoDB not connected)
+    let user;
+    if (mongoose.connection.readyState === 1) {
+      user = await User.findOneAndUpdate(
+        { googleId },
+        { email, name, picture, role },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+      ).lean();
+    } else {
+      user = { googleId, email, name, picture, role };
+    }
+
+    const token = jwt.sign(
+      { googleId, email, name, picture, role },
+      JWT_SECRET,
+      { expiresIn: "7d" }
+    );
+    res.json({ token, user: { googleId, email, name, picture, role } });
+  } catch (err) {
+    console.error("Google auth error:", err.message);
+    res.status(401).json({ error: "Google authentication failed" });
+  }
+});
+
+// GET /api/auth/me — verify JWT and return current user
+app.get("/api/auth/me", requireAuth, (req, res) => {
+  res.json({ user: req.user });
+});
+
 // ─── REST API ─────────────────────────────────────────────────────────────────
 
-// List all sessions (no snapshot blob — keeps response tiny)
-app.get("/api/sessions", async (req, res) => {
+// List sessions — filtered by teacher ownership (admin sees all)
+app.get("/api/sessions", optionalAuth, async (req, res) => {
   try {
+    // Admin sees everything; teachers see only their sessions; guests see nothing
+    let filter = {};
+    if (req.user) {
+      if (req.user.role !== "admin") {
+        filter = { teacherEmail: req.user.email };
+      }
+    } else {
+      return res.json([]); // unauthenticated — no sessions listed
+    }
+
     const sessions = await Session.find(
-      {},
-      "code title createdBy createdAt endedAt active folder snapshotCount participants"
+      filter,
+      "code title createdBy teacherEmail createdAt endedAt active folder snapshotCount participants"
     ).lean().sort({ createdAt: -1 });
 
     res.json(sessions.map(s => ({
       code:             s.code,
       title:            s.title,
       createdBy:        s.createdBy,
+      teacherEmail:     s.teacherEmail,
       createdAt:        s.createdAt,
       endedAt:          s.endedAt,
       active:           s.active,
@@ -108,13 +195,25 @@ app.patch("/api/sessions/:code/folder", async (req, res) => {
   }
 });
 
-// Delete one session
-app.delete("/api/sessions/:code", async (req, res) => {
+// Delete one session — owner or admin only
+app.delete("/api/sessions/:code", optionalAuth, async (req, res) => {
   try {
-    const code = req.params.code.toUpperCase();
+    const code    = req.params.code.toUpperCase();
+    const session = await Session.findOne({ code }).lean();
+    if (!session) return res.status(404).json({ error: "Not found" });
+
+    // Access check: must be admin OR the teacher who created it
+    if (req.user) {
+      const isAdmin   = req.user.role === "admin";
+      const isOwner   = session.teacherEmail === req.user.email;
+      if (!isAdmin && !isOwner) return res.status(403).json({ error: "Forbidden" });
+    } else {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
     await Session.deleteOne({ code });
     await Snapshot.deleteMany({ sessionCode: code });
-    console.log(`Session ${code} deleted`);
+    console.log(`Session ${code} deleted by ${req.user?.email}`);
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: "DB error" });

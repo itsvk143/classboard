@@ -51,10 +51,24 @@ const folderSchema = new mongoose.Schema(
   { versionKey: false }
 );
 
+// ─── User ─────────────────────────────────────────────────────────────────────
+const userSchema = new mongoose.Schema(
+  {
+    googleId: { type: String, required: true, unique: true },
+    email:    { type: String, required: true, unique: true, lowercase: true },
+    name:     { type: String, required: true },
+    picture:  { type: String, default: '' },
+    role:     { type: String, enum: ['admin','teacher','student'], default: 'teacher' },
+    createdAt:{ type: Date, default: Date.now },
+  },
+  { versionKey: false }
+);
+
 // ─── Models ───────────────────────────────────────────────────────────────────
-const Session  = mongoose.model("Session",  sessionSchema);
-const Snapshot = mongoose.model("Snapshot", snapshotSchema);
-const Folder   = mongoose.model("Folder",   folderSchema);
+const Session  = mongoose.model('Session',  sessionSchema);
+const Snapshot = mongoose.model('Snapshot', snapshotSchema);
+const Folder   = mongoose.model('Folder',   folderSchema);
+const User     = mongoose.model('User',     userSchema);
 
 // ─── Connect ─────────────────────────────────────────────────────────────────
 async function connectDB() {
@@ -67,4 +81,4 @@ async function connectDB() {
   console.log("✅ MongoDB connected");
 }
 
-module.exports = { connectDB, Session, Snapshot, Folder };
+module.exports = { connectDB, Session, Snapshot, Folder, User };

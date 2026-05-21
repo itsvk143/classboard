@@ -1,17 +1,29 @@
-// HomeScreen.jsx — Classroom entry: create or join a session
+// HomeScreen.jsx — Classroom dashboard for logged-in teachers
 import React, { useState, useEffect } from "react";
 import "../App.css";
 import { useNavigate } from "react-router-dom";
 import { API_BASE_URL } from "../config";
+import { useAuth } from "../AuthContext";
 
 const HomeScreen = () => {
   const navigate = useNavigate();
-  const [tab, setTab] = useState("join");
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
+  const { user, authFetch, logout } = useAuth();
+
+  // Pre-fill create form with Google profile (teacher can override)
+  const [tab,          setTab]          = useState("create");
+  const [name,         setName]         = useState(user?.name  || "");
+  const [email,        setEmail]        = useState(user?.email || "");
   const [sessionTitle, setSessionTitle] = useState("");
-  const [code, setCode] = useState("");
-  const [error, setError] = useState("");
+  const [code,         setCode]         = useState("");
+  const [error,        setError]        = useState("");
+
+  // Sync if user info arrives later (e.g. after token restore)
+  useEffect(() => {
+    if (user) {
+      setName(n  => n  || user.name  || "");
+      setEmail(e => e  || user.email || "");
+    }
+  }, [user]);
 
   const [sessions, setSessions] = useState([]);
   const [loadingSessions, setLoadingSessions] = useState(true);
@@ -26,14 +38,14 @@ const HomeScreen = () => {
   const [modalInput, setModalInput] = useState("");
 
   const loadData = () => {
-    fetch(`${API_BASE_URL}/api/sessions`)
+    authFetch(`${API_BASE_URL}/api/sessions`)
       .then((r) => r.json())
-      .then((data) => { setSessions(data); setLoadingSessions(false); })
+      .then((data) => { setSessions(Array.isArray(data) ? data : []); setLoadingSessions(false); })
       .catch((e) => { console.error(e); setLoadingSessions(false); });
 
-    fetch(`${API_BASE_URL}/api/folders`)
+    authFetch(`${API_BASE_URL}/api/folders`)
       .then(r => r.json())
-      .then(data => setFolders(data))
+      .then(data => setFolders(Array.isArray(data) ? data : []))
       .catch(e => console.error(e));
   };
 
@@ -55,7 +67,7 @@ const HomeScreen = () => {
   const deleteSession = (sessionCode, e) => {
     if (e) e.stopPropagation();
     if (!window.confirm(`Delete session "${sessionCode}"? This cannot be undone.`)) return;
-    fetch(`${API_BASE_URL}/api/sessions/${sessionCode}`, { method: "DELETE" })
+    authFetch(`${API_BASE_URL}/api/sessions/${sessionCode}`, { method: "DELETE" })
       .then(() => {
         setSelectedSessions(prev => { const n = new Set(prev); n.delete(sessionCode); return n; });
         loadData();
@@ -65,7 +77,7 @@ const HomeScreen = () => {
   const bulkDelete = (codes) => {
     if (codes.length === 0) return;
     if (!window.confirm(`Delete ${codes.length} session(s)? This cannot be undone.`)) return;
-    fetch(`${API_BASE_URL}/api/sessions/bulk-delete`, {
+    authFetch(`${API_BASE_URL}/api/sessions/bulk-delete`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ codes })
@@ -178,21 +190,63 @@ const HomeScreen = () => {
   };
 
   const handleCreate = () => {
-    if (!name.trim()) { setError("Please enter your name."); return; }
     if (!sessionTitle.trim()) { setError("Please enter a class title."); return; }
     setError("");
-    navigate("/classroom", { state: { action: "create", name, email, sessionTitle, isTeacher: true } });
+    navigate("/classroom", {
+      state: {
+        action: "create",
+        name:   user?.name  || name,
+        email:  user?.email || email,
+        sessionTitle,
+        isTeacher: true,
+      },
+    });
   };
 
   const handleJoin = () => {
     if (!name.trim()) { setError("Please enter your name."); return; }
     if (!code.trim()) { setError("Please enter a session code."); return; }
     setError("");
-    navigate("/classroom", { state: { action: "join", name, email, code: code.toUpperCase(), isTeacher: false } });
+    navigate("/classroom", {
+      state: {
+        action: "join",
+        name:   user?.name  || name,
+        email:  user?.email || email,
+        code: code.toUpperCase(),
+        isTeacher: false,
+      },
+    });
   };
 
   return (
     <div className="home-screen">
+      {/* ── Top bar with user avatar and logout ── */}
+      <div style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        padding: "10px 20px 0", marginBottom: 8,
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {user?.picture && (
+            <img src={user.picture} alt="avatar"
+              style={{ width: 34, height: 34, borderRadius: "50%", border: "2px solid rgba(79,142,247,0.5)" }} />
+          )}
+          <div>
+            <div style={{ color: "#e2e8f0", fontWeight: 700, fontSize: 14 }}>{user?.name}</div>
+            <div style={{ color: "#64748b", fontSize: 11 }}>
+              {user?.role === "admin" ? "🔑 Admin" : "👩‍🏫 Teacher"} · {user?.email}
+            </div>
+          </div>
+        </div>
+        <button
+          onClick={logout}
+          style={{
+            background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.25)",
+            borderRadius: 8, color: "#f87171", cursor: "pointer",
+            fontSize: 13, padding: "6px 14px", fontWeight: 600,
+          }}
+        >Sign Out</button>
+      </div>
+
       <div className="home-logo" style={{ marginBottom: "16px" }}>
         <span className="home-logo-icon">🖊️</span>
         <h1>ClassBoard</h1>
