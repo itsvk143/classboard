@@ -72,9 +72,9 @@ const User     = mongoose.model('User',     userSchema);
 
 // ─── Connect ─────────────────────────────────────────────────────────────────
 async function connectDB() {
-  const uri = process.env.MONGODB_URI;
+  const uri = process.env.MONGODB_URI || process.env.MONGO_URL;
   if (!uri) {
-    console.warn("⚠️  MONGODB_URI not set — running in memory-only mode (data lost on restart)");
+    console.warn("⚠️  MONGODB_URI / MONGO_URL not set — running in memory-only mode (data lost on restart)");
     return; // Don't crash — just skip DB
   }
   await mongoose.connect(uri, { dbName: "classboard" });
