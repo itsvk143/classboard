@@ -1,5 +1,5 @@
 // HomeScreen.jsx — Classroom dashboard for logged-in teachers
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import "../App.css";
 import { useNavigate } from "react-router-dom";
 import { API_BASE_URL } from "../config";
@@ -37,7 +37,7 @@ const HomeScreen = () => {
   const [modalState, setModalState] = useState(null);
   const [modalInput, setModalInput] = useState("");
 
-  const loadData = () => {
+  const loadData = useCallback(() => {
     authFetch(`${API_BASE_URL}/api/sessions`)
       .then((r) => r.json())
       .then((data) => { setSessions(Array.isArray(data) ? data : []); setLoadingSessions(false); })
@@ -47,9 +47,9 @@ const HomeScreen = () => {
       .then(r => r.json())
       .then(data => setFolders(Array.isArray(data) ? data : []))
       .catch(e => console.error(e));
-  };
+  }, [authFetch]);
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => { loadData(); }, [loadData]);
 
   const formatDate = (iso) => {
     if (!iso) return "—";
