@@ -1,13 +1,9 @@
 /**
  * AuthContext.jsx — Global authentication state for ClassBoard
  *
- * Provides:
- *  • user      — current logged-in user (null if not signed in)
- *  • token     — JWT stored in localStorage
- *  • authFetch — fetch wrapper that auto-adds Authorization header
- *  • login()   — call with Google credential to sign in
- *  • logout()  — clear auth state
- *  • loading   — true while restoring session from localStorage
+ * Supports two login modes:
+ *  1. Google OAuth — when REACT_APP_GOOGLE_CLIENT_ID is configured (production)
+ *  2. Demo/fallback — name + email login via /api/auth/demo  (no Google Client ID)
  */
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { API_BASE_URL } from "./config";
@@ -30,16 +26,15 @@ export function AuthProvider({ children }) {
       .then(r => r.ok ? r.json() : Promise.reject())
       .then(({ user: u }) => { setUser(u); setToken(stored); })
       .catch(() => {
-        // Token expired or invalid — clear it
         localStorage.removeItem("cb_token");
         setToken(null);
       })
       .finally(() => setLoading(false));
   }, []);
 
-  // ── Login via Google credential ────────────────────────────────────────────
+  // ── Login via Google credential ─────────────────────────────────────────────
   const login = useCallback(async (credential) => {
-    const res  = await fetch(`${API_BASE_URL}/api/auth/google`, {
+    const res = await fetch(`${API_BASE_URL}/api/auth/google`, {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
       body:    JSON.stringify({ credential }),
@@ -52,7 +47,23 @@ export function AuthProvider({ children }) {
     return u;
   }, []);
 
-  // ── Logout ─────────────────────────────────────────────────────────────────
+  // ── Demo/fallback login — name + email (no Google verification) ─────────────
+  // Used when REACT_APP_GOOGLE_CLIENT_ID is not configured yet.
+  const loginDemo = useCallback(async (name, email) => {
+    const res = await fetch(`${API_BASE_URL}/api/auth/demo`, {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ name, email }),
+    });
+    if (!res.ok) throw new Error("Login failed");
+    const { token: t, user: u } = await res.json();
+    localStorage.setItem("cb_token", t);
+    setToken(t);
+    setUser(u);
+    return u;
+  }, []);
+
+  // ── Logout ──────────────────────────────────────────────────────────────────
   const logout = useCallback(() => {
     localStorage.removeItem("cb_token");
     localStorage.removeItem("classboard_session");
@@ -60,14 +71,14 @@ export function AuthProvider({ children }) {
     setUser(null);
   }, []);
 
-  // ── Authenticated fetch helper ─────────────────────────────────────────────
+  // ── Authenticated fetch helper ──────────────────────────────────────────────
   const authFetch = useCallback((url, opts = {}) => {
     const headers = { ...(opts.headers || {}), Authorization: `Bearer ${token}` };
     return fetch(url, { ...opts, headers });
   }, [token]);
 
   return (
-    <AuthContext.Provider value={{ user, token, loading, login, logout, authFetch }}>
+    <AuthContext.Provider value={{ user, token, loading, login, loginDemo, logout, authFetch }}>
       {children}
     </AuthContext.Provider>
   );

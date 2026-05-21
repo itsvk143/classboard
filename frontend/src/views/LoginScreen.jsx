@@ -1,22 +1,40 @@
 /**
- * LoginScreen.jsx — Google OAuth sign-in page
- * Teachers log in with Google; students can join via session code without an account.
+ * LoginScreen.jsx — ClassBoard sign-in page
+ *
+ * Teacher section:
+ *  • Shows Google "Sign in with Google" button when REACT_APP_GOOGLE_CLIENT_ID is set
+ *  • Falls back to name + email form when Google OAuth is not yet configured
+ *
+ * Student section:
+ *  • Name + session code → joins classroom directly (no account needed)
  */
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { GoogleLogin } from "@react-oauth/google";
 import { useAuth } from "../AuthContext";
-import { API_BASE_URL } from "../config";
+
+// Only import GoogleLogin if the package is available and client ID is set
+const GOOGLE_CLIENT_ID = process.env.REACT_APP_GOOGLE_CLIENT_ID || "";
+let GoogleLogin = null;
+if (GOOGLE_CLIENT_ID) {
+  try { GoogleLogin = require("@react-oauth/google").GoogleLogin; } catch {}
+}
 
 export default function LoginScreen() {
-  const { login } = useAuth();
-  const navigate  = useNavigate();
+  const { login, loginDemo } = useAuth();
+  const navigate = useNavigate();
+
+  // Teacher fallback form
+  const [teacherName,  setTeacherName]  = useState("");
+  const [teacherEmail, setTeacherEmail] = useState("");
+
+  // Student join form
   const [guestName, setGuestName] = useState("");
   const [guestCode, setGuestCode] = useState("");
-  const [error,     setError]     = useState("");
-  const [loading,   setLoading]   = useState(false);
 
-  // ── Google sign-in (teachers / admins) ─────────────────────────────────────
+  const [error,   setError]   = useState("");
+  const [loading, setLoading] = useState(false);
+
+  // ── Google sign-in ──────────────────────────────────────────────────────────
   const handleGoogleSuccess = async (credentialResponse) => {
     setLoading(true);
     setError("");
@@ -30,13 +48,36 @@ export default function LoginScreen() {
     }
   };
 
-  // ── Guest join (students — no Google account required) ─────────────────────
+  // ── Demo / fallback teacher login ───────────────────────────────────────────
+  const handleDemoLogin = async () => {
+    if (!teacherName.trim())  { setError("Please enter your name."); return; }
+    if (!teacherEmail.trim()) { setError("Please enter your email."); return; }
+    if (!teacherEmail.includes("@")) { setError("Please enter a valid email."); return; }
+    setLoading(true);
+    setError("");
+    try {
+      await loginDemo(teacherName.trim(), teacherEmail.trim().toLowerCase());
+      navigate("/");
+    } catch {
+      setError("Login failed. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ── Student join ────────────────────────────────────────────────────────────
   const handleGuestJoin = () => {
     if (!guestName.trim()) { setError("Please enter your name."); return; }
-    if (!guestCode.trim()) { setError("Please enter the session code your teacher shared."); return; }
+    if (!guestCode.trim()) { setError("Please enter the session code."); return; }
     setError("");
     navigate("/classroom", {
-      state: { action: "join", name: guestName.trim(), email: "", code: guestCode.trim().toUpperCase(), isTeacher: false },
+      state: {
+        action: "join",
+        name:   guestName.trim(),
+        email:  "",
+        code:   guestCode.trim().toUpperCase(),
+        isTeacher: false,
+      },
     });
   };
 
@@ -46,12 +87,12 @@ export default function LoginScreen() {
       background: "linear-gradient(135deg, #0d1117 0%, #0f2027 50%, #161b22 100%)",
       fontFamily: "'Inter', sans-serif", padding: "24px",
     }}>
-      <div style={{ width: "100%", maxWidth: 420 }}>
+      <div style={{ width: "100%", maxWidth: 440 }}>
 
         {/* Logo */}
-        <div style={{ textAlign: "center", marginBottom: 40 }}>
-          <div style={{ fontSize: 48, marginBottom: 12 }}>🖊️</div>
-          <h1 style={{ color: "#e2e8f0", fontSize: 28, fontWeight: 800, margin: 0, letterSpacing: -0.5 }}>
+        <div style={{ textAlign: "center", marginBottom: 36 }}>
+          <div style={{ fontSize: 52, marginBottom: 10 }}>🖊️</div>
+          <h1 style={{ color: "#e2e8f0", fontSize: 30, fontWeight: 800, margin: 0, letterSpacing: -0.5 }}>
             ClassBoard
           </h1>
           <p style={{ color: "#64748b", fontSize: 14, marginTop: 8, marginBottom: 0 }}>
@@ -59,22 +100,21 @@ export default function LoginScreen() {
           </p>
         </div>
 
-        {/* Teacher card */}
-        <div style={{
-          background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)",
-          borderRadius: 16, padding: 28, marginBottom: 20,
-          backdropFilter: "blur(12px)",
-        }}>
-          <h2 style={{ color: "#e2e8f0", fontSize: 16, fontWeight: 700, margin: "0 0 6px" }}>
-            👩‍🏫 Teacher / Admin Login
-          </h2>
-          <p style={{ color: "#64748b", fontSize: 13, margin: "0 0 20px" }}>
-            Sign in with Google to create and manage your classes.
+        {/* ── Teacher / Admin Login ─────────────────────────────────────────── */}
+        <div style={cardStyle}>
+          <h2 style={cardTitleStyle}>👩‍🏫 Teacher / Admin Login</h2>
+          <p style={cardSubStyle}>
+            {GOOGLE_CLIENT_ID
+              ? "Sign in with your Google account to create and manage classes."
+              : "Enter your name and email to sign in as a teacher."}
           </p>
 
           {loading ? (
-            <div style={{ textAlign: "center", color: "#64748b", padding: "12px 0" }}>Signing in…</div>
-          ) : (
+            <div style={{ textAlign: "center", color: "#64748b", padding: "16px 0" }}>
+              Signing in…
+            </div>
+          ) : GOOGLE_CLIENT_ID && GoogleLogin ? (
+            /* Google OAuth button */
             <div style={{ display: "flex", justifyContent: "center" }}>
               <GoogleLogin
                 onSuccess={handleGoogleSuccess}
@@ -86,19 +126,46 @@ export default function LoginScreen() {
                 locale="en"
               />
             </div>
+          ) : (
+            /* Fallback: name + email */
+            <>
+              {!GOOGLE_CLIENT_ID && (
+                <div style={{
+                  background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.3)",
+                  borderRadius: 8, padding: "8px 12px", marginBottom: 14,
+                  fontSize: 12, color: "#fbbf24",
+                }}>
+                  ⚠️ Google OAuth not configured — using name/email login
+                </div>
+              )}
+              <input
+                placeholder="Your name"
+                value={teacherName}
+                onChange={e => setTeacherName(e.target.value)}
+                style={inputStyle}
+              />
+              <input
+                placeholder="your@email.com"
+                type="email"
+                value={teacherEmail}
+                onChange={e => setTeacherEmail(e.target.value)}
+                style={{ ...inputStyle, marginTop: 10 }}
+                onKeyDown={e => e.key === "Enter" && handleDemoLogin()}
+              />
+              <button
+                onClick={handleDemoLogin}
+                style={{ ...joinBtnStyle, marginTop: 14, background: "linear-gradient(135deg, #4f8ef7, #7c3aed)" }}
+              >
+                Sign In as Teacher →
+              </button>
+            </>
           )}
         </div>
 
-        {/* Student card */}
-        <div style={{
-          background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)",
-          borderRadius: 16, padding: 28,
-          backdropFilter: "blur(12px)",
-        }}>
-          <h2 style={{ color: "#e2e8f0", fontSize: 16, fontWeight: 700, margin: "0 0 6px" }}>
-            🎓 Join as Student
-          </h2>
-          <p style={{ color: "#64748b", fontSize: 13, margin: "0 0 16px" }}>
+        {/* ── Student join ──────────────────────────────────────────────────── */}
+        <div style={{ ...cardStyle, marginTop: 0 }}>
+          <h2 style={cardTitleStyle}>🎓 Join as Student</h2>
+          <p style={cardSubStyle}>
             Enter the session code your teacher shared. No account needed.
           </p>
 
@@ -109,35 +176,50 @@ export default function LoginScreen() {
             style={inputStyle}
           />
           <input
-            placeholder="Session code (e.g. ABC123)"
+            placeholder="Session code  (e.g. ABC123)"
             value={guestCode}
             onChange={e => setGuestCode(e.target.value.toUpperCase())}
             style={{ ...inputStyle, marginTop: 10, letterSpacing: 3, fontWeight: 700 }}
             onKeyDown={e => e.key === "Enter" && handleGuestJoin()}
           />
-
           <button onClick={handleGuestJoin} style={joinBtnStyle}>
             Join Class →
           </button>
         </div>
 
         {error && (
-          <p style={{ color: "#f87171", textAlign: "center", fontSize: 13, marginTop: 16 }}>
+          <p style={{ color: "#f87171", textAlign: "center", fontSize: 13, marginTop: 14 }}>
             {error}
           </p>
         )}
 
-        <p style={{ color: "#334155", fontSize: 11, textAlign: "center", marginTop: 24 }}>
-          ClassBoard — Secure collaborative learning
+        <p style={{ color: "#1e293b", fontSize: 11, textAlign: "center", marginTop: 20 }}>
+          ClassBoard · Secure collaborative learning
         </p>
       </div>
     </div>
   );
 }
 
+// ── Styles ───────────────────────────────────────────────────────────────────
+const cardStyle = {
+  background: "rgba(255,255,255,0.04)",
+  border: "1px solid rgba(255,255,255,0.08)",
+  borderRadius: 16, padding: 28, marginBottom: 16,
+  backdropFilter: "blur(12px)",
+};
+
+const cardTitleStyle = {
+  color: "#e2e8f0", fontSize: 16, fontWeight: 700, margin: "0 0 6px",
+};
+
+const cardSubStyle = {
+  color: "#64748b", fontSize: 13, margin: "0 0 18px",
+};
+
 const inputStyle = {
   width: "100%", boxSizing: "border-box",
-  background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)",
+  background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)",
   borderRadius: 10, padding: "12px 14px",
   color: "#e2e8f0", fontSize: 14, outline: "none",
   fontFamily: "inherit",
@@ -146,9 +228,8 @@ const inputStyle = {
 const joinBtnStyle = {
   width: "100%", marginTop: 14,
   padding: "13px 0", borderRadius: 10,
-  background: "linear-gradient(135deg, #4f8ef7, #7c3aed)",
+  background: "linear-gradient(135deg, #22c55e, #16a34a)",
   border: "none", color: "#fff",
   fontSize: 15, fontWeight: 700, cursor: "pointer",
-  letterSpacing: 0.3,
-  transition: "opacity 0.2s",
+  letterSpacing: 0.3, transition: "opacity 0.2s",
 };

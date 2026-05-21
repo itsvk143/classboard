@@ -123,6 +123,44 @@ app.get("/api/auth/me", requireAuth, (req, res) => {
   res.json({ user: req.user });
 });
 
+// POST /api/auth/demo — fallback login when Google OAuth isn't configured
+// Issues a real JWT based on name+email (no Google verification).
+// Admin emails (ADMIN_EMAILS) still receive the admin role.
+app.post("/api/auth/demo", async (req, res) => {
+  try {
+    const { name, email } = req.body;
+    if (!name || !email) return res.status(400).json({ error: "name and email required" });
+
+    const normalEmail = email.toLowerCase().trim();
+    const role = ADMIN_EMAILS.includes(normalEmail) ? "admin" : "teacher";
+    const googleId = `demo_${normalEmail.replace(/[^a-z0-9]/g, "_")}`;
+
+    // Upsert user in DB if available
+    if (mongoose.connection.readyState === 1) {
+      await User.findOneAndUpdate(
+        { googleId },
+        { email: normalEmail, name, picture: "", role },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+      );
+    }
+
+    const token = jwt.sign(
+      { googleId, email: normalEmail, name, picture: "", role, demo: true },
+      JWT_SECRET,
+      { expiresIn: "7d" }
+    );
+    res.json({
+      token,
+      user: { googleId, email: normalEmail, name, picture: "", role },
+      warning: "Demo mode — configure GOOGLE_CLIENT_ID for Google OAuth",
+    });
+  } catch (err) {
+    console.error("demo auth error:", err.message);
+    res.status(500).json({ error: "Login failed" });
+  }
+});
+
+
 // ─── REST API ─────────────────────────────────────────────────────────────────
 
 // List sessions — filtered by teacher ownership (admin sees all)
