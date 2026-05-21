@@ -346,29 +346,24 @@ body {
 .toolbar-bar {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 5px 12px;
+  gap: 4px;
+  padding: 4px 10px;
   background: var(--bg2);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;          /* single line — never wraps */
   justify-content: flex-start;
   overflow-x: auto;
   overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
+  white-space: nowrap;
 }
 .toolbar-bar::-webkit-scrollbar { display: none; }
 
 @media (max-width: 768px) {
-  .classroom-header {
-    padding: 6px 10px;
-    gap: 8px;
-  }
-  .toolbar-bar {
-    padding: 4px 8px;
-    gap: 4px;
-  }
+  .classroom-header { padding: 6px 10px; gap: 8px; }
+  .toolbar-bar { padding: 3px 8px; gap: 3px; }
 }
 
 .classroom-title-area {
@@ -632,9 +627,10 @@ body {
 .toolbar-group {
   display: flex;
   align-items: center;
-  gap: 4px;
-  flex-wrap: wrap;
-  justify-content: center;
+  gap: 2px;
+  flex-wrap: nowrap;   /* never wrap tool groups */
+  justify-content: flex-start;
+  flex-shrink: 0;
 }
 
 @media (max-width: 600px) {
@@ -658,16 +654,17 @@ body {
 }
 
 .tool-btn {
-  width: 34px; height: 34px;
+  width: 30px; height: 30px;   /* tighter for single-line fit */
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: 7px;
   background: transparent;
   color: var(--text2);
-  font-size: 16px;
+  font-size: 15px;
   cursor: pointer;
   display: flex; align-items: center; justify-content: center;
   transition: all 0.15s;
   position: relative;
+  flex-shrink: 0;
 }
 
 .tool-btn:hover { background: var(--bg3); color: var(--text); }
@@ -676,17 +673,18 @@ body {
 .color-dot {
   display: flex;
   align-items: center;
-  gap: 2px;
-  flex-wrap: wrap;
-  max-width: 220px;
+  gap: 3px;
+  flex-wrap: nowrap;   /* keep colors on one row */
+  flex-shrink: 0;
 }
 
 .color-swatch {
-  width: 22px; height: 22px;
+  width: 18px; height: 18px;   /* smaller for single-line fit */
   border-radius: 50%;
   border: 2px solid transparent;
   cursor: pointer;
   transition: all 0.15s;
+  flex-shrink: 0;
 }
 
 .color-swatch:hover { transform: scale(1.2); }
@@ -694,10 +692,11 @@ body {
 
 .stroke-slider {
   -webkit-appearance: none;
-  width: 80px; height: 4px;
+  width: 70px; height: 4px;   /* slightly shorter to save space */
   background: var(--border2);
   border-radius: 2px;
   outline: none;
+  flex-shrink: 0;
 }
 
 .stroke-slider::-webkit-slider-thumb {
