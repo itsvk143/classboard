@@ -342,7 +342,7 @@ body {
   min-height: 48px;
 }
 
-/* ── Full-width toolbar bar (below header, above canvas) ──────────────────── */
+/* ── Full-width toolbar bar (legacy — kept for any remaining refs) ──────── */
 .toolbar-bar {
   display: flex;
   align-items: center;
@@ -351,8 +351,7 @@ body {
   background: var(--bg2);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
-  flex-wrap: nowrap;          /* single line — never wraps */
-  justify-content: flex-start;
+  flex-wrap: nowrap;
   overflow-x: auto;
   overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
@@ -361,8 +360,34 @@ body {
 }
 .toolbar-bar::-webkit-scrollbar { display: none; }
 
+/* ── Inline toolbar — sits between left toggle and right controls ─────── */
+/* On desktop: fills the centre of the header in one row                  */
+/* On mobile : wraps to a full-width second row                           */
+.toolbar-inline {
+  flex: 1;           /* fill all space between left and right sections */
+  min-width: 0;      /* allow shrinking below intrinsic size */
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+.toolbar-inline::-webkit-scrollbar { display: none; }
+
 @media (max-width: 768px) {
-  .classroom-header { padding: 6px 10px; gap: 8px; }
+  .classroom-header { padding: 6px 10px; gap: 6px; flex-wrap: wrap; }
+  .toolbar-inline {
+    order: 3;               /* push to second row */
+    flex: none;
+    width: 100%;
+    border-top: 1px solid var(--border);
+    padding-top: 4px;
+    gap: 3px;
+  }
   .toolbar-bar { padding: 3px 8px; gap: 3px; }
 }
 

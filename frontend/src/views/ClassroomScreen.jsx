@@ -55,9 +55,24 @@ export default function ClassroomScreen() {
   const location = useLocation();
   const navigate = useNavigate();
   const state = location.state || {};
-  const { action, name, email, sessionTitle, code: joinCode, isTeacher } = state;
 
-  const sessionCodeRef = useRef(joinCode || "");
+  // ── Session recovery: restore from localStorage if page was refreshed ────────
+  // On a browser refresh, React Router loses location.state. We persist the
+  // minimal session info (name, code, role) in localStorage so the user
+  // automatically rejoins instead of getting a brand-new session code.
+  const _saved = (() => {
+    try { return JSON.parse(localStorage.getItem('classboard_session') || 'null'); }
+    catch { return null; }
+  })();
+
+  const action       = state.action       || (_saved ? 'join'        : null);
+  const name         = state.name         || _saved?.name         || '';
+  const email        = state.email        || _saved?.email        || '';
+  const sessionTitle = state.sessionTitle || _saved?.sessionTitle || 'My Class';
+  const joinCode     = state.code         || _saved?.code         || '';
+  const isTeacher    = state.isTeacher    ?? (_saved?.role === 'teacher');
+
+  const sessionCodeRef = useRef(joinCode || '');
 
   // Socket & session
   const [socket, setSocket] = useState(null);
@@ -182,6 +197,8 @@ export default function ClassroomScreen() {
       setSessionInfo(room);
       setMembers(room.members || []);
       setRole("teacher");
+      // Persist so refresh rejoins the same session
+      localStorage.setItem('classboard_session', JSON.stringify({ name, email, code, role: 'teacher', sessionTitle }));
       showToast(`Session created! Code: ${code}`);
     });
 
@@ -192,6 +209,8 @@ export default function ClassroomScreen() {
       setRole(r);
       setChats(prevChats || []);
       if (canvasState) loadCanvasFromDataURL(canvasState);
+      // Persist so refresh rejoins the same session
+      localStorage.setItem('classboard_session', JSON.stringify({ name, email, code, role: r, sessionTitle }));
       showToast(`Joined session ${code}`);
     });
 
@@ -909,10 +928,9 @@ const handleEndSession = () => {
   const code = sessionCodeRef.current || sessionCode;
   if (!code) { showToast('⚠️ No active session to end.'); return; }
   if (!window.confirm('End this class session for everyone?')) return;
-  // Quality 0.7 — final snapshot: good readability, ~40% smaller than 0.95
   const finalDataURL = getWhiteBackgroundDataURL(canvasRef.current, 0.7, liveSelectionRef.current);
-  console.log('Ending session:', code);
   socket.emit('end-session', { code, finalDataURL });
+  localStorage.removeItem('classboard_session'); // clear so next visit starts fresh
 };
 
 const handleKick = (targetId) => {
@@ -1241,7 +1259,7 @@ return (
 
         {/* Leave Session */}
         <button
-          onClick={() => navigate("/")}
+          onClick={() => { localStorage.removeItem('classboard_session'); navigate("/"); }}
           style={{
             display: "flex", alignItems: "center", gap: "12px",
             padding: "12px 14px", borderRadius: "10px",
@@ -1269,10 +1287,11 @@ return (
       )}
     </aside>
 
-    {/* ── Header ── */}
+    {/* ── Combined Header + Toolbar (single row on desktop) ── */}
     <header className="classroom-header">
-      <div className="classroom-title-area">
-        {/* Chat / Participants sidebar toggle */}
+
+      {/* LEFT: Sidebar toggle */}
+      <div className="classroom-title-area" style={{ flexShrink: 0 }}>
         <button
           onClick={() => setIsSidebarOpen(!isSidebarOpen)}
           style={{ background: "transparent", border: "none", color: "var(--text1)", fontSize: "24px", cursor: "pointer", position: "relative", display: "flex", alignItems: "center" }}
@@ -1287,7 +1306,134 @@ return (
         </button>
       </div>
 
-      <div className="classroom-header-btns">
+      {/* CENTRE: Drawing Toolbar — scrollable, fills available space */}
+      <div className="toolbar-inline">
+        {/* Drawing tools */}
+        <div className="toolbar-group">
+          {[
+            { id: TOOLS.SELECT,     label: <MousePointer2 size={17} />, title: "Select" },
+            { id: TOOLS.LASSO,      label: <Move size={17} />,          title: "Lasso Select" },
+            { id: TOOLS.PEN,        label: <PenTool size={17} />,       title: "Pen" },
+            { id: TOOLS.HIGHLIGHTER,label: <Highlighter size={17} />,   title: "Highlighter" },
+            { id: TOOLS.ERASER,     label: <Eraser size={17} />,        title: "Eraser" },
+            { id: TOOLS.OBJ_ERASER, label: <Wand2 size={17} />,         title: "Object Eraser" },
+            { id: TOOLS.CIRCLE,     label: <Circle size={17} />,        title: "Circle" },
+            { id: TOOLS.RECTANGLE,  label: <Square size={17} />,        title: "Rectangle" },
+          ].map((t) => (
+            <React.Fragment key={t.id}>
+              <button className={`tool-btn ${tool === t.id ? "active" : ""}`} title={t.title} onClick={() => setTool(t.id)}>
+                {t.label}
+              </button>
+              {t.id === TOOLS.ERASER && role === "teacher" && (
+                <button className="tool-btn" onClick={handleClearCanvas} title="Clear Board"><Trash2 size={17} /></button>
+              )}
+            </React.Fragment>
+          ))}
+
+          {/* More shapes dropdown */}
+          <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+            <button
+              className={`tool-btn ${[TOOLS.LINE, TOOLS.SQUARE, TOOLS.TRIANGLE, TOOLS.HEXAGON].includes(tool) ? "active" : ""}`}
+              title="More Shapes"
+              onClick={(e) => {
+                if (!showMoreShapes) {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  setShapeMenuCoords({ top: rect.bottom + 8, left: rect.left - 20 });
+                }
+                setShowMoreShapes(!showMoreShapes);
+              }}
+              style={{ fontSize: "10px", padding: "0 4px", color: "var(--text3)" }}
+            >
+              {showMoreShapes ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+            </button>
+            {showMoreShapes && createPortal(
+              <div style={{ position: "fixed", top: shapeMenuCoords.top, left: shapeMenuCoords.left, display: "flex", flexDirection: "column", gap: "4px", background: "var(--bg2)", padding: "6px", borderRadius: "8px", border: "1px solid var(--border)", zIndex: 9999, boxShadow: "0 8px 24px rgba(0,0,0,0.6)" }}>
+                {[
+                  { id: TOOLS.LINE,     label: <Minus size={17} />,    title: "Straight line" },
+                  { id: TOOLS.SQUARE,   label: <Square size={17} />,   title: "Square" },
+                  { id: TOOLS.TRIANGLE, label: <Triangle size={17} />, title: "Triangle" },
+                  { id: TOOLS.HEXAGON,  label: <Hexagon size={17} />,  title: "Hexagon" },
+                ].map(t => (
+                  <button key={t.id} className={`tool-btn ${tool === t.id ? "active" : ""}`} title={t.title}
+                    onClick={() => { setTool(t.id); setShowMoreShapes(false); }}
+                    style={{ width: "100%", justifyContent: "center" }}>
+                    {t.label}
+                  </button>
+                ))}
+              </div>,
+              document.body
+            )}
+          </div>
+
+          {/* Laser pointer */}
+          <button className={`tool-btn ${tool === TOOLS.LASER ? "active" : ""}`} title="Laser Pointer" onClick={() => setTool(TOOLS.LASER)}>
+            <Zap size={17} />
+          </button>
+        </div>
+
+        <div className="toolbar-divider" />
+
+        {/* Color palette */}
+        <div className="color-dot">
+          {COLORS.map((c) => (
+            <div key={c} className={`color-swatch ${color === c ? "active" : ""}`}
+              style={{ background: c, border: c === "#ffffff" ? "2px solid #555" : "2px solid transparent" }}
+              onClick={() => { setColor(c); setTool(TOOLS.PEN); }} title={c}
+            />
+          ))}
+          <input type="color" value={color}
+            onChange={(e) => { setColor(e.target.value); setTool(TOOLS.PEN); }}
+            style={{ width: "20px", height: "20px", border: "none", background: "transparent", cursor: "pointer", borderRadius: "50%", overflow: "hidden" }}
+            title="Custom color"
+          />
+        </div>
+
+        <div className="toolbar-divider" />
+
+        {/* Stroke size */}
+        <span style={{ fontSize: "10px", color: "var(--text3)", fontWeight: "600", textTransform: "uppercase", whiteSpace: "nowrap" }}>Size</span>
+        <input className="stroke-slider" type="range" min={1} max={30} value={stroke} onChange={(e) => setStroke(parseInt(e.target.value))} />
+
+        <div className="toolbar-divider" />
+
+        {/* Palm rejection / Stylus mode toggle */}
+        <button
+          onClick={() => {
+            const next = !pencilOnly;
+            setPencilOnly(next);
+            if (!next) stylusDetected.current = false;
+          }}
+          title={
+            pencilOnly
+              ? stylusDetected.current
+                ? 'Stylus Auto-Detected — Palm Rejection ON. Tap to disable.'
+                : 'Palm Rejection ON. Tap to disable.'
+              : 'Palm Rejection OFF — will auto-enable when stylus is detected'
+          }
+          style={{
+            background: pencilOnly ? "rgba(79,142,247,0.2)" : "transparent",
+            border: pencilOnly ? "1px solid rgba(79,142,247,0.5)" : "1px solid transparent",
+            borderRadius: "6px", padding: "3px 7px", cursor: "pointer",
+            fontSize: "14px", lineHeight: 1, flexShrink: 0,
+            color: pencilOnly ? "#4f8ef7" : "var(--text3)",
+            display: "flex", alignItems: "center", gap: 4, transition: "all 0.2s",
+          }}
+        >
+          ✏️
+          {pencilOnly && (
+            <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: 0.5 }}>
+              {stylusDetected.current ? 'AUTO' : 'ONLY'}
+            </span>
+          )}
+        </button>
+
+        {/* Hidden file inputs */}
+        <input id="canvas-image-upload" type="file" accept="image/*" style={{ display: "none" }} onChange={handleFileUpload} />
+        <input id="canvas-pdf-upload" type="file" accept="application/pdf" style={{ display: "none" }} onChange={handleFileUpload} />
+      </div>
+
+      {/* RIGHT: Zoom, session code, hamburger */}
+      <div className="classroom-header-btns" style={{ flexShrink: 0 }}>
         {snapshotSaved && (
           <span style={{ fontSize: "12px", color: "#4ade80" }}>✓ Saved {snapshotSaved}</span>
         )}
@@ -1295,25 +1441,15 @@ return (
           const elem = document.documentElement;
           const isFullscreen = document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement;
           if (!isFullscreen) {
-            if (elem.requestFullscreen) {
-              elem.requestFullscreen().catch(err => alert(`Fullscreen error: ${err.message}`));
-            } else if (elem.webkitRequestFullscreen) {
-              elem.webkitRequestFullscreen();
-            } else if (elem.mozRequestFullScreen) {
-              elem.mozRequestFullScreen();
-            } else if (elem.msRequestFullscreen) {
-              elem.msRequestFullscreen();
-            }
+            if (elem.requestFullscreen) elem.requestFullscreen().catch(err => alert(`Fullscreen error: ${err.message}`));
+            else if (elem.webkitRequestFullscreen) elem.webkitRequestFullscreen();
+            else if (elem.mozRequestFullScreen) elem.mozRequestFullScreen();
+            else if (elem.msRequestFullscreen) elem.msRequestFullscreen();
           } else {
-            if (document.exitFullscreen) {
-              document.exitFullscreen();
-            } else if (document.webkitExitFullscreen) {
-              document.webkitExitFullscreen();
-            } else if (document.mozCancelFullScreen) {
-              document.mozCancelFullScreen();
-            } else if (document.msExitFullscreen) {
-              document.msExitFullscreen();
-            }
+            if (document.exitFullscreen) document.exitFullscreen();
+            else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+            else if (document.mozCancelFullScreen) document.mozCancelFullScreen();
+            else if (document.msExitFullscreen) document.msExitFullscreen();
           }
         }}>
           <Maximize size={18} />
@@ -1323,30 +1459,19 @@ return (
           <button className="zoom-btn" onClick={() => setZoom(Math.max(0.01, zoom - 0.1))} style={{ background: "transparent", border: "none", color: "var(--text2)", cursor: "pointer", fontSize: "18px" }}>-</button>
           <span style={{ fontSize: "12px", color: "var(--text)", minWidth: "45px", textAlign: "center", fontWeight: "bold" }}>{Math.round(zoom * 100)}%</span>
           <button className="zoom-btn" onClick={() => setZoom(Math.min(10.0, zoom + 0.1))} style={{ background: "transparent", border: "none", color: "var(--text2)", cursor: "pointer", fontSize: "18px" }}>+</button>
-          <button
-            className="zoom-btn"
-            onClick={() => setZoom(1.0)}
-            style={{ background: "rgba(79,142,247,0.1)", border: "none", color: "var(--primary)", cursor: "pointer", fontSize: "10px", padding: "4px 8px", borderRadius: "4px" }}
-          >
-            Reset
-          </button>
+          <button className="zoom-btn" onClick={() => setZoom(1.0)} style={{ background: "rgba(79,142,247,0.1)", border: "none", color: "var(--primary)", cursor: "pointer", fontSize: "10px", padding: "4px 8px", borderRadius: "4px" }}>Reset</button>
         </div>
 
-        {/* Session code badge — always visible in header */}
         {sessionCode ? (
-          <span
-            className="classroom-code-badge"
-            onClick={copyCode}
-            title="Click to copy session code"
-            style={{ padding: "6px 12px", fontSize: "12px", letterSpacing: "2px", cursor: "pointer" }}
-          >
+          <span className="classroom-code-badge" onClick={copyCode} title="Click to copy session code"
+            style={{ padding: "6px 12px", fontSize: "12px", letterSpacing: "2px", cursor: "pointer" }}>
             <Copy size={13} /> {sessionCode}
           </span>
         ) : (
           <span style={{ fontSize: "11px", color: "var(--text3)", padding: "6px 8px" }}>Connecting...</span>
         )}
 
-        {/* Right hamburger menu trigger */}
+        {/* Right hamburger */}
         <button
           onClick={() => setIsLeftMenuOpen(true)}
           style={{
@@ -1363,133 +1488,6 @@ return (
       </div>
     </header>
 
-    {/* ── Full-width Drawing Toolbar (below header, always visible) ────────── */}
-    <div className="toolbar-bar">
-      {/* Drawing tools */}
-      <div className="toolbar-group">
-        {[
-          { id: TOOLS.SELECT,     label: <MousePointer2 size={18} />, title: "Select" },
-          { id: TOOLS.LASSO,      label: <Move size={18} />,          title: "Lasso Select" },
-          { id: TOOLS.PEN,        label: <PenTool size={18} />,       title: "Pen" },
-          { id: TOOLS.HIGHLIGHTER,label: <Highlighter size={18} />,   title: "Highlighter" },
-          { id: TOOLS.ERASER,     label: <Eraser size={18} />,        title: "Eraser" },
-          { id: TOOLS.OBJ_ERASER, label: <Wand2 size={18} />,         title: "Object Eraser" },
-          { id: TOOLS.CIRCLE,     label: <Circle size={18} />,        title: "Circle" },
-          { id: TOOLS.RECTANGLE,  label: <Square size={18} />,        title: "Rectangle" },
-        ].map((t) => (
-          <React.Fragment key={t.id}>
-            <button className={`tool-btn ${tool === t.id ? "active" : ""}`} title={t.title} onClick={() => setTool(t.id)}>
-              {t.label}
-            </button>
-            {t.id === TOOLS.ERASER && role === "teacher" && (
-              <button className="tool-btn" onClick={handleClearCanvas} title="Clear Board"><Trash2 size={18} /></button>
-            )}
-          </React.Fragment>
-        ))}
-
-        {/* More shapes dropdown */}
-        <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
-          <button
-            className={`tool-btn ${[TOOLS.LINE, TOOLS.SQUARE, TOOLS.TRIANGLE, TOOLS.HEXAGON].includes(tool) ? "active" : ""}`}
-            title="More Shapes"
-            onClick={(e) => {
-              if (!showMoreShapes) {
-                const rect = e.currentTarget.getBoundingClientRect();
-                setShapeMenuCoords({ top: rect.bottom + 8, left: rect.left - 20 });
-              }
-              setShowMoreShapes(!showMoreShapes);
-            }}
-            style={{ fontSize: "10px", padding: "0 4px", color: "var(--text3)" }}
-          >
-            {showMoreShapes ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-          </button>
-          {showMoreShapes && createPortal(
-            <div style={{ position: "fixed", top: shapeMenuCoords.top, left: shapeMenuCoords.left, display: "flex", flexDirection: "column", gap: "4px", background: "var(--bg2)", padding: "6px", borderRadius: "8px", border: "1px solid var(--border)", zIndex: 9999, boxShadow: "0 8px 24px rgba(0,0,0,0.6)" }}>
-              {[
-                { id: TOOLS.LINE,     label: <Minus size={18} />,    title: "Straight line" },
-                { id: TOOLS.SQUARE,   label: <Square size={18} />,   title: "Square" },
-                { id: TOOLS.TRIANGLE, label: <Triangle size={18} />, title: "Triangle" },
-                { id: TOOLS.HEXAGON,  label: <Hexagon size={18} />,  title: "Hexagon" },
-              ].map(t => (
-                <button key={t.id} className={`tool-btn ${tool === t.id ? "active" : ""}`} title={t.title}
-                  onClick={() => { setTool(t.id); setShowMoreShapes(false); }}
-                  style={{ width: "100%", justifyContent: "center" }}>
-                  {t.label}
-                </button>
-              ))}
-            </div>,
-            document.body
-          )}
-        </div>
-
-        {/* Laser pointer */}
-        <button className={`tool-btn ${tool === TOOLS.LASER ? "active" : ""}`} title="Laser Pointer" onClick={() => setTool(TOOLS.LASER)}>
-          <Zap size={18} />
-        </button>
-
-      </div>
-
-      {/* Hidden file inputs — kept here so onChange handler works */}
-      <input id="canvas-image-upload" type="file" accept="image/*" style={{ display: "none" }} onChange={handleFileUpload} />
-      <input id="canvas-pdf-upload" type="file" accept="application/pdf" style={{ display: "none" }} onChange={handleFileUpload} />
-
-      <div className="toolbar-divider" />
-
-      {/* Color palette */}
-      <div className="color-dot">
-        {COLORS.map((c) => (
-          <div key={c} className={`color-swatch ${color === c ? "active" : ""}`}
-            style={{ background: c, border: c === "#ffffff" ? "2px solid #555" : "2px solid transparent" }}
-            onClick={() => { setColor(c); setTool(TOOLS.PEN); }} title={c}
-          />
-        ))}
-        <input type="color" value={color}
-          onChange={(e) => { setColor(e.target.value); setTool(TOOLS.PEN); }}
-          style={{ width: "22px", height: "22px", border: "none", background: "transparent", cursor: "pointer", borderRadius: "50%", overflow: "hidden" }}
-          title="Custom color"
-        />
-      </div>
-
-      <div className="toolbar-divider" />
-
-      {/* Stroke size */}
-      <span style={{ fontSize: "11px", color: "var(--text3)", fontWeight: "600", textTransform: "uppercase", whiteSpace: "nowrap" }}>Size</span>
-      <input className="stroke-slider" type="range" min={1} max={30} value={stroke} onChange={(e) => setStroke(parseInt(e.target.value))} />
-
-      <div className="toolbar-divider" />
-
-      {/* Palm rejection / Stylus mode toggle */}
-      <button
-        onClick={() => {
-          const next = !pencilOnly;
-          setPencilOnly(next);
-          // If user manually disables, clear the auto-detect flag so it can re-trigger
-          if (!next) stylusDetected.current = false;
-        }}
-        title={
-          pencilOnly
-            ? stylusDetected.current
-              ? 'Stylus Auto-Detected — Palm Rejection ON. Tap to disable.'
-              : 'Palm Rejection ON. Tap to disable.'
-            : 'Palm Rejection OFF — will auto-enable when stylus is detected'
-        }
-        style={{
-          background: pencilOnly ? "rgba(79,142,247,0.2)" : "transparent",
-          border: pencilOnly ? "1px solid rgba(79,142,247,0.5)" : "1px solid transparent",
-          borderRadius: "6px", padding: "4px 8px", cursor: "pointer",
-          fontSize: "16px", lineHeight: 1,
-          color: pencilOnly ? "#4f8ef7" : "var(--text3)",
-          display: "flex", alignItems: "center", gap: 4, transition: "all 0.2s",
-        }}
-      >
-        ✏️
-        {pencilOnly && (
-          <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: 0.5 }}>
-            {stylusDetected.current ? 'AUTO' : 'ONLY'}
-          </span>
-        )}
-      </button>
-    </div>
 
     <div className="classroom-body">
       {/* ── Sidebar ── */}
