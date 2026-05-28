@@ -215,6 +215,10 @@ app.post("/api/auth/demo", async (req, res) => {
 // List sessions — filtered by teacher ownership (admin sees all)
 app.get("/api/sessions", optionalAuth, async (req, res) => {
   try {
+    if (mongoose.connection.readyState !== 1) {
+      return res.json([]); // Return empty list in memory-only mode
+    }
+
     // Admin sees everything; teachers see only their sessions; guests see nothing
     let filter = {};
     if (req.user) {
@@ -251,7 +255,23 @@ app.get("/api/sessions", optionalAuth, async (req, res) => {
 // Get single session + its snapshot (for replay)
 app.get("/api/sessions/:code", async (req, res) => {
   try {
-    const code    = req.params.code.toUpperCase();
+    const code = req.params.code.toUpperCase();
+    if (mongoose.connection.readyState !== 1) {
+      // Memory-only fallback: check in-memory rooms
+      const room = rooms[code];
+      if (!room) return res.status(404).json({ error: "Session not found" });
+      return res.json({
+        code,
+        title: room.title,
+        createdBy: room.teacher.name,
+        teacherEmail: room.teacher.email,
+        createdAt: new Date(),
+        active: room.active,
+        folder: "",
+        snapshots: room.canvasState ? [{ timestamp: new Date(), dataURL: room.canvasState }] : [],
+      });
+    }
+
     const session = await Session.findOne({ code }).lean();
     if (!session) return res.status(404).json({ error: "Session not found" });
 
@@ -269,7 +289,11 @@ app.get("/api/sessions/:code", async (req, res) => {
 // Update session folder
 app.patch("/api/sessions/:code/folder", async (req, res) => {
   try {
-    const code    = req.params.code.toUpperCase();
+    const code = req.params.code.toUpperCase();
+    if (mongoose.connection.readyState !== 1) {
+      return res.json({ success: true, folder: req.body.folder || "" });
+    }
+
     const updated = await Session.findOneAndUpdate(
       { code },
       { folder: req.body.folder || "" },
@@ -285,7 +309,11 @@ app.patch("/api/sessions/:code/folder", async (req, res) => {
 // Delete one session — owner or admin only
 app.delete("/api/sessions/:code", optionalAuth, async (req, res) => {
   try {
-    const code    = req.params.code.toUpperCase();
+    const code = req.params.code.toUpperCase();
+    if (mongoose.connection.readyState !== 1) {
+      return res.json({ success: true });
+    }
+
     const session = await Session.findOne({ code }).lean();
     if (!session) return res.status(404).json({ error: "Not found" });
 
@@ -313,6 +341,11 @@ app.post("/api/sessions/bulk-delete", async (req, res) => {
     const { codes } = req.body;
     if (!Array.isArray(codes) || codes.length === 0)
       return res.status(400).json({ error: "codes array required" });
+
+    if (mongoose.connection.readyState !== 1) {
+      return res.json({ success: true, deleted: codes.length });
+    }
+
     const upper = codes.map(c => c.toUpperCase());
     await Session.deleteMany({ code: { $in: upper } });
     await Snapshot.deleteMany({ sessionCode: { $in: upper } });
@@ -326,6 +359,10 @@ app.post("/api/sessions/bulk-delete", async (req, res) => {
 
 app.get("/api/folders", async (req, res) => {
   try {
+    if (mongoose.connection.readyState !== 1) {
+      return res.json([]); // Return empty list in memory-only mode
+    }
+
     const folders = await Folder.find({}).lean().sort({ createdAt: 1 });
     res.json(folders.map(f => ({ id: f.folderId, name: f.name })));
   } catch (e) {
@@ -337,6 +374,11 @@ app.post("/api/folders", async (req, res) => {
   try {
     const { name } = req.body;
     if (!name) return res.status(400).json({ error: "Name required" });
+
+    if (mongoose.connection.readyState !== 1) {
+      return res.json({ id: Date.now().toString(), name });
+    }
+
     const id     = Date.now().toString();
     const folder = await Folder.create({ folderId: id, name });
     res.json({ id: folder.folderId, name: folder.name });
@@ -349,6 +391,11 @@ app.patch("/api/folders/:id", async (req, res) => {
   try {
     const { id }   = req.params;
     const { name } = req.body;
+
+    if (mongoose.connection.readyState !== 1) {
+      return res.json({ id, name });
+    }
+
     const folder   = await Folder.findOne({ folderId: id });
     if (!folder) return res.status(404).json({ error: "Folder not found" });
     const oldName  = folder.name;
@@ -365,6 +412,11 @@ app.patch("/api/folders/:id", async (req, res) => {
 app.delete("/api/folders/:id", async (req, res) => {
   try {
     const { id }  = req.params;
+
+    if (mongoose.connection.readyState !== 1) {
+      return res.json({ success: true });
+    }
+
     const folder  = await Folder.findOne({ folderId: id });
     if (!folder) return res.status(404).json({ error: "Folder not found" });
     const oldName = folder.name;
@@ -411,15 +463,17 @@ io.on("connection", (socket) => {
 
     // Persist to MongoDB (lightweight — no snapshot yet)
     try {
-      await Session.create({
-        code,
-        title:        title || "Untitled Class",
-        createdBy:    name,
-        teacherEmail: (email || "").toLowerCase(),
-        createdAt:    new Date(),
-        active:       true,
-        participants: [{ name, email, role: "teacher" }],
-      });
+      if (mongoose.connection.readyState === 1) {
+        await Session.create({
+          code,
+          title:        title || "Untitled Class",
+          createdBy:    name,
+          teacherEmail: (email || "").toLowerCase(),
+          createdAt:    new Date(),
+          active:       true,
+          participants: [{ name, email, role: "teacher" }],
+        });
+      }
     } catch (e) {
       console.error("create-session DB error:", e.message);
     }
