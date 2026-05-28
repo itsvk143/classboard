@@ -106,12 +106,7 @@ app.post("/api/auth/google", async (req, res) => {
 // ── Standard OAuth 2.0 redirect flow (more reliable — no JS origin check) ────
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || "";
 const FRONTEND_URL = process.env.FRONTEND_URL || "https://classroom-eight.vercel.app";
-
-// GET /api/auth/google/url — returns Google OAuth URL pointing to BACKEND callback
-// Google → backend → frontend (token in URL) — no Vercel SPA routing needed
-const BACKEND_URL = process.env.RAILWAY_PUBLIC_DOMAIN
-  ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
-  : process.env.BACKEND_URL || "https://classboard-production-9f4d.up.railway.app";
+const BACKEND_URL  = process.env.BACKEND_URL  || "https://classboard-production-9f4d.up.railway.app";
 
 app.get("/api/auth/google/url", (req, res) => {
   const params = new URLSearchParams({
