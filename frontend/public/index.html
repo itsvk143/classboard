@@ -15,6 +15,17 @@
     <style>
       html, body { background: #0d1117; margin: 0; padding: 0; }
     </style>
+    <!-- SPA routing: restore path saved by 404.html -->
+    <script>
+      (function() {
+        var redirect = sessionStorage.getItem('redirect');
+        if (redirect) {
+          sessionStorage.removeItem('redirect');
+          // Replace current history entry with the real path
+          window.history.replaceState(null, null, redirect);
+        }
+      })();
+    </script>
     <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo192.png" />
     <!--
       manifest.json provides metadata used when your web app is installed on a
