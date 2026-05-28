@@ -8,6 +8,11 @@
  *
  * This replaces the file-based sessions.json (~7 MB) with a proper DB.
  */
+// Polyfill global.crypto for MongoDB driver in older Node.js versions
+if (typeof global !== "undefined" && !global.crypto) {
+  global.crypto = require("crypto");
+}
+
 const mongoose = require("mongoose");
 
 // ─── Session ─────────────────────────────────────────────────────────────────
