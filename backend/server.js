@@ -10,7 +10,7 @@ dotenv.config({ path: "../.env" });
 const mongoose = require("mongoose");
 const jwt     = require("jsonwebtoken");
 const { OAuth2Client } = require("google-auth-library");
-const { connectDB, Session, Snapshot, Folder, User } = require("./db");
+const { connectDB, Session, Snapshot, Folder, User, getDbStatus } = require("./db");
 
 
 const app    = express();
@@ -211,6 +211,11 @@ app.post("/api/auth/demo", async (req, res) => {
 
 
 // ─── REST API ─────────────────────────────────────────────────────────────────
+
+// Diagnose database connection issues
+app.get("/api/db-status", (req, res) => {
+  res.json(getDbStatus());
+});
 
 // List sessions — filtered by teacher ownership (admin sees all)
 app.get("/api/sessions", optionalAuth, async (req, res) => {

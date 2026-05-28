@@ -71,14 +71,32 @@ const Folder   = mongoose.model('Folder',   folderSchema);
 const User     = mongoose.model('User',     userSchema);
 
 // ─── Connect ─────────────────────────────────────────────────────────────────
+let dbError = null;
+
 async function connectDB() {
   const uri = process.env.MONGODB_URI || process.env.MONGO_URL;
   if (!uri) {
     console.warn("⚠️  MONGODB_URI / MONGO_URL not set — running in memory-only mode (data lost on restart)");
     return; // Don't crash — just skip DB
   }
-  await mongoose.connect(uri, { dbName: "classboard" });
-  console.log("✅ MongoDB connected");
+  try {
+    await mongoose.connect(uri, { dbName: "classboard" });
+    console.log("✅ MongoDB connected");
+    dbError = null;
+  } catch (err) {
+    console.error("❌ MongoDB connection failed:", err.message);
+    dbError = err.message;
+    throw err;
+  }
 }
 
-module.exports = { connectDB, Session, Snapshot, Folder, User };
+function getDbStatus() {
+  return {
+    connected: mongoose.connection.readyState === 1,
+    readyState: mongoose.connection.readyState,
+    error: dbError,
+    hasUri: !!(process.env.MONGODB_URI || process.env.MONGO_URL)
+  };
+}
+
+module.exports = { connectDB, Session, Snapshot, Folder, User, getDbStatus };
