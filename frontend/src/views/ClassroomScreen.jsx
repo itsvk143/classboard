@@ -69,7 +69,7 @@ export default function ClassroomScreen() {
   const name         = state.name         || _saved?.name         || '';
   const email        = state.email        || _saved?.email        || '';
   const sessionTitle = state.sessionTitle || _saved?.sessionTitle || 'My Class';
-  const joinCode     = state.code         || _saved?.code         || '';
+  const joinCode     = (state.action === 'create') ? '' : (state.code || _saved?.code || '');
   const isTeacher    = state.isTeacher    ?? (_saved?.role === 'teacher');
 
   const sessionCodeRef = useRef(joinCode || '');
