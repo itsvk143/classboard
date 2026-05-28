@@ -5,7 +5,7 @@ import {
   MousePointer2, Move, PenTool, Highlighter, Eraser, Circle, Square,
   Triangle, Hexagon, Minus, Zap, Trash2, FileDown, Save, LogOut,
   ChevronDown, ChevronUp, Menu, Copy, Maximize, ArrowLeft,
-  FilePlus2, ImagePlus, Wand2
+  FilePlus2, ImagePlus, Wand2, Hand
 } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { io } from "socket.io-client";
@@ -17,7 +17,7 @@ const ENDPOINT = SOCKET_ENDPOINT;
 const COLORS = [
   "#000000", "#ffffff", "#ef4444", "#3b82f6", "#22c55e", "#ec4899",
 ];
-const TOOLS = { SELECT: "select", LASSO: "lasso", PEN: "pen", ERASER: "eraser", OBJ_ERASER: "obj_eraser", HIGHLIGHTER: "highlighter", LASER: "laser", LINE: "line", TRIANGLE: "triangle", CIRCLE: "circle", RECTANGLE: "rectangle", SQUARE: "square", HEXAGON: "hexagon" };
+const TOOLS = { SELECT: "select", LASSO: "lasso", PAN: "pan", PEN: "pen", ERASER: "eraser", OBJ_ERASER: "obj_eraser", HIGHLIGHTER: "highlighter", LASER: "laser", LINE: "line", TRIANGLE: "triangle", CIRCLE: "circle", RECTANGLE: "rectangle", SQUARE: "square", HEXAGON: "hexagon" };
 
 const getWhiteBackgroundDataURL = (canvas, quality = 0.95, selection = null) => {
   const tempCanvas = document.createElement("canvas");
@@ -129,6 +129,9 @@ export default function ClassroomScreen() {
   const selectionDivRef = useRef(null);
   const liveSelectionRef = useRef(null);
   const [remotePreviews, setRemotePreviews] = useState({}); // { senderId: { tool, start, end, color, stroke } }
+  const canvasWrapperRef = useRef(null);
+  const isPanningCanvas = useRef(false);
+  const panStart = useRef({ x: 0, y: 0, scrollLeft: 0, scrollTop: 0 });
 
   useEffect(() => {
     liveSelectionRef.current = selection;
@@ -560,6 +563,18 @@ export default function ClassroomScreen() {
   const onDown = (e) => {
     if (e.button === 2) return; // ignore right-click
 
+    if (tool === TOOLS.PAN) {
+      isPanningCanvas.current = true;
+      panStart.current = {
+        x: e.clientX,
+        y: e.clientY,
+        scrollLeft: canvasWrapperRef.current ? canvasWrapperRef.current.scrollLeft : 0,
+        scrollTop: canvasWrapperRef.current ? canvasWrapperRef.current.scrollTop : 0
+      };
+      try { e.currentTarget?.setPointerCapture(e.pointerId); } catch {}
+      return;
+    }
+
     // ── Auto stylus detection ─────────────────────────────────────────────────
     // The first time Apple Pencil / any stylus touches the canvas, automatically
     // enable palm rejection so finger/palm touches are ignored from that point on.
@@ -660,6 +675,14 @@ export default function ClassroomScreen() {
   // Without this, the browser may coalesce 5-10 intermediate points into one event,
   // causing letters to look broken or have missing segments on iPad.
   const onMove = (e) => {
+    if (isPanningCanvas.current && panStart.current && canvasWrapperRef.current) {
+      const dx = e.clientX - panStart.current.x;
+      const dy = e.clientY - panStart.current.y;
+      canvasWrapperRef.current.scrollLeft = panStart.current.scrollLeft - dx;
+      canvasWrapperRef.current.scrollTop = panStart.current.scrollTop - dy;
+      return;
+    }
+
     // Palm rejection: reject finger/palm in pencil-only mode
     if (pencilOnly && e.pointerType === 'touch') return;
 
@@ -798,6 +821,12 @@ export default function ClassroomScreen() {
 
 
   const onUp = (e) => {
+    if (isPanningCanvas.current) {
+      isPanningCanvas.current = false;
+      try { e.currentTarget?.releasePointerCapture(e.pointerId); } catch {}
+      return;
+    }
+
     if (!isPainting.current && !isDraggingSelection.current && !isResizingSelection.current && !isRotatingSelection.current) return;
     const pos = getPos(e);
 
@@ -1313,6 +1342,7 @@ return (
           {[
             { id: TOOLS.SELECT,     label: <MousePointer2 size={17} />, title: "Select" },
             { id: TOOLS.LASSO,      label: <Move size={17} />,          title: "Lasso Select" },
+            { id: TOOLS.PAN,        label: <Hand size={17} />,          title: "Pan / Hand Tool (Drag to Scroll)" },
             { id: TOOLS.PEN,        label: <PenTool size={17} />,       title: "Pen" },
             { id: TOOLS.HIGHLIGHTER,label: <Highlighter size={17} />,   title: "Highlighter" },
             { id: TOOLS.ERASER,     label: <Eraser size={17} />,        title: "Eraser" },
@@ -1608,7 +1638,7 @@ return (
         {/* Toolbar moved to header */}
 
         {/* Canvas */}
-        <div className="canvas-wrapper">
+        <div ref={canvasWrapperRef} className="canvas-wrapper">
           <div style={{
             position: "relative",
             width: 3000 * zoom,
@@ -1784,7 +1814,7 @@ return (
                 height={10000}
                 className="whiteboard-canvas"
                 style={{
-                  cursor: tool === TOOLS.ERASER ? "cell" : tool === TOOLS.LASER ? "crosshair" : "crosshair",
+                  cursor: tool === TOOLS.PAN ? "grab" : tool === TOOLS.ERASER ? "cell" : tool === TOOLS.LASER ? "crosshair" : "crosshair",
                   touchAction: "none",
                   display: "block"
                 }}
