@@ -107,11 +107,16 @@ app.post("/api/auth/google", async (req, res) => {
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || "";
 const FRONTEND_URL = process.env.FRONTEND_URL || "https://classroom-eight.vercel.app";
 
-// GET /api/auth/google/url — returns the Google OAuth authorization URL
+// GET /api/auth/google/url — returns Google OAuth URL pointing to BACKEND callback
+// Google → backend → frontend (token in URL) — no Vercel SPA routing needed
+const BACKEND_URL = process.env.RAILWAY_PUBLIC_DOMAIN
+  ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
+  : process.env.BACKEND_URL || "https://classboard-production-9f4d.up.railway.app";
+
 app.get("/api/auth/google/url", (req, res) => {
   const params = new URLSearchParams({
     client_id:     GOOGLE_CLIENT_ID,
-    redirect_uri:  `${FRONTEND_URL.replace(/\/$/, "")}/api-callback`,
+    redirect_uri:  `${BACKEND_URL}/api/auth/google/callback`,
     response_type: "code",
     scope:         "openid email profile",
     access_type:   "online",
@@ -120,12 +125,13 @@ app.get("/api/auth/google/url", (req, res) => {
   res.json({ url: `https://accounts.google.com/o/oauth2/v2/auth?${params}` });
 });
 
-// GET /api/auth/google/callback — exchanges code for user info, returns JWT
-// Called by the frontend /api-callback page with ?code=...
+// GET /api/auth/google/callback — Google redirects HERE (backend)
+// Exchanges code → JWT → redirects browser to frontend with token in URL
 app.get("/api/auth/google/callback", async (req, res) => {
   try {
-    const { code } = req.query;
-    if (!code) return res.status(400).json({ error: "code required" });
+    const { code, error } = req.query;
+    if (error) return res.redirect(`${FRONTEND_URL}?auth_error=${encodeURIComponent(error)}`);
+    if (!code) return res.redirect(`${FRONTEND_URL}?auth_error=no_code`);
 
     // Exchange code for tokens
     const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
@@ -135,14 +141,14 @@ app.get("/api/auth/google/callback", async (req, res) => {
         code,
         client_id:     GOOGLE_CLIENT_ID,
         client_secret: GOOGLE_CLIENT_SECRET,
-        redirect_uri:  `${FRONTEND_URL.replace(/\/$/, "")}/api-callback`,
+        redirect_uri:  `${BACKEND_URL}/api/auth/google/callback`,
         grant_type:    "authorization_code",
       }),
     });
     const tokenData = await tokenRes.json();
-    if (!tokenData.id_token) throw new Error("No id_token in response");
+    if (!tokenData.id_token) throw new Error(tokenData.error_description || "No id_token");
 
-    // Verify the ID token we got back
+    // Verify ID token, build user
     const ticket  = await googleClient.verifyIdToken({ idToken: tokenData.id_token, audience: GOOGLE_CLIENT_ID });
     const payload = ticket.getPayload();
     const { sub: googleId, email, name, picture } = payload;
@@ -155,10 +161,13 @@ app.get("/api/auth/google/callback", async (req, res) => {
       );
     }
     const token = jwt.sign({ googleId, email, name, picture, role }, JWT_SECRET, { expiresIn: "7d" });
-    res.json({ token, user: { googleId, email, name, picture, role } });
+
+    // Redirect browser back to frontend with JWT in URL param
+    const dest = `${FRONTEND_URL.replace(/\/$/, "")}?cb_token=${encodeURIComponent(token)}`;
+    res.redirect(dest);
   } catch (err) {
     console.error("OAuth callback error:", err.message);
-    res.status(401).json({ error: "OAuth failed: " + err.message });
+    res.redirect(`${FRONTEND_URL}?auth_error=${encodeURIComponent(err.message)}`);
   }
 });
 

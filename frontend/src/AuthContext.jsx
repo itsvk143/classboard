@@ -17,6 +17,33 @@ export function AuthProvider({ children }) {
 
   // ── Restore session on mount ────────────────────────────────────────────────
   useEffect(() => {
+    // ── Case 1: token delivered in URL by backend after OAuth redirect ──────
+    const params = new URLSearchParams(window.location.search);
+    const urlToken = params.get("cb_token");
+    const authError = params.get("auth_error");
+
+    if (urlToken) {
+      // Clean the token from URL immediately
+      window.history.replaceState({}, document.title, window.location.pathname);
+      localStorage.setItem("cb_token", urlToken);
+      setToken(urlToken);
+      // Decode user from JWT (don't need a round-trip to verify here)
+      try {
+        const payload = JSON.parse(atob(urlToken.split(".")[1]));
+        setUser({ googleId: payload.googleId, email: payload.email, name: payload.name, picture: payload.picture, role: payload.role });
+      } catch {}
+      setLoading(false);
+      return;
+    }
+
+    if (authError) {
+      window.history.replaceState({}, document.title, window.location.pathname);
+      console.error("Auth error from OAuth:", authError);
+      setLoading(false);
+      return;
+    }
+
+    // ── Case 2: restore from localStorage ──────────────────────────────────
     const stored = localStorage.getItem("cb_token");
     if (!stored) { setLoading(false); return; }
 
