@@ -201,6 +201,8 @@ const HomeScreen = () => {
         isTeacher: true,
       },
     });
+  };
+
   const handleJoin = () => {
     if (!name.trim()) { setError("Please enter your name."); return; }
     if (!code.trim()) { setError("Please enter a session code."); return; }
