@@ -760,9 +760,10 @@ io.on("connection", (socket) => {
 });
 
 // ─── START ───────────────────────────────────────────────────────────────────
-// Always start the server — MongoDB is optional (runs in memory-only if not set)
-connectDB()
-  .catch(err => console.error("MongoDB connection failed:", err.message))
-  .finally(() => {
-    server.listen(PORT, () => console.log(`ClassBoard server on port ${PORT}`));
+// Start the server immediately so it passes Railway health checks, then connect to DB in the background
+server.listen(PORT, () => {
+  console.log(`ClassBoard server on port ${PORT}`);
+  connectDB().catch(err => {
+    console.error("MongoDB connection failed:", err.message);
   });
+});
