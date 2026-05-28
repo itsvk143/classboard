@@ -80,43 +80,88 @@ async function saveSnapshot(sessionCode, dataURL, isFinal = false) {
 
 // ─── AUTH ROUTES ──────────────────────────────────────────────────────────────
 
-// POST /api/auth/google — exchange Google ID token for ClassBoard JWT
+// POST /api/auth/google — exchange Google ID token for ClassBoard JWT (GIS flow)
 app.post("/api/auth/google", async (req, res) => {
   try {
     const { credential } = req.body;
     if (!credential) return res.status(400).json({ error: "credential required" });
-
-    // Verify the Google ID token
     const ticket  = await googleClient.verifyIdToken({ idToken: credential, audience: GOOGLE_CLIENT_ID });
     const payload = ticket.getPayload();
     const { sub: googleId, email, name, picture } = payload;
-
-    // Determine role: admin emails → admin, everyone else → teacher by default
     const role = ADMIN_EMAILS.includes(email.toLowerCase()) ? "admin" : "teacher";
-
-    // Upsert user in DB (no-op if MongoDB not connected)
-    let user;
     if (mongoose.connection.readyState === 1) {
-      user = await User.findOneAndUpdate(
-        { googleId },
-        { email, name, picture, role },
+      await User.findOneAndUpdate(
+        { googleId }, { email, name, picture, role },
         { upsert: true, new: true, setDefaultsOnInsert: true }
-      ).lean();
-    } else {
-      user = { googleId, email, name, picture, role };
+      );
     }
-
-    const token = jwt.sign(
-      { googleId, email, name, picture, role },
-      JWT_SECRET,
-      { expiresIn: "7d" }
-    );
+    const token = jwt.sign({ googleId, email, name, picture, role }, JWT_SECRET, { expiresIn: "7d" });
     res.json({ token, user: { googleId, email, name, picture, role } });
   } catch (err) {
     console.error("Google auth error:", err.message);
     res.status(401).json({ error: "Google authentication failed" });
   }
 });
+
+// ── Standard OAuth 2.0 redirect flow (more reliable — no JS origin check) ────
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || "";
+const FRONTEND_URL = process.env.FRONTEND_URL || "https://classroom-eight.vercel.app";
+
+// GET /api/auth/google/url — returns the Google OAuth authorization URL
+app.get("/api/auth/google/url", (req, res) => {
+  const params = new URLSearchParams({
+    client_id:     GOOGLE_CLIENT_ID,
+    redirect_uri:  `${FRONTEND_URL.replace(/\/$/, "")}/api-callback`,
+    response_type: "code",
+    scope:         "openid email profile",
+    access_type:   "online",
+    prompt:        "select_account",
+  });
+  res.json({ url: `https://accounts.google.com/o/oauth2/v2/auth?${params}` });
+});
+
+// GET /api/auth/google/callback — exchanges code for user info, returns JWT
+// Called by the frontend /api-callback page with ?code=...
+app.get("/api/auth/google/callback", async (req, res) => {
+  try {
+    const { code } = req.query;
+    if (!code) return res.status(400).json({ error: "code required" });
+
+    // Exchange code for tokens
+    const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        code,
+        client_id:     GOOGLE_CLIENT_ID,
+        client_secret: GOOGLE_CLIENT_SECRET,
+        redirect_uri:  `${FRONTEND_URL.replace(/\/$/, "")}/api-callback`,
+        grant_type:    "authorization_code",
+      }),
+    });
+    const tokenData = await tokenRes.json();
+    if (!tokenData.id_token) throw new Error("No id_token in response");
+
+    // Verify the ID token we got back
+    const ticket  = await googleClient.verifyIdToken({ idToken: tokenData.id_token, audience: GOOGLE_CLIENT_ID });
+    const payload = ticket.getPayload();
+    const { sub: googleId, email, name, picture } = payload;
+    const role = ADMIN_EMAILS.includes(email.toLowerCase()) ? "admin" : "teacher";
+
+    if (mongoose.connection.readyState === 1) {
+      await User.findOneAndUpdate(
+        { googleId }, { email, name, picture, role },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+      );
+    }
+    const token = jwt.sign({ googleId, email, name, picture, role }, JWT_SECRET, { expiresIn: "7d" });
+    res.json({ token, user: { googleId, email, name, picture, role } });
+  } catch (err) {
+    console.error("OAuth callback error:", err.message);
+    res.status(401).json({ error: "OAuth failed: " + err.message });
+  }
+});
+
 
 // GET /api/auth/me — verify JWT and return current user
 app.get("/api/auth/me", requireAuth, (req, res) => {

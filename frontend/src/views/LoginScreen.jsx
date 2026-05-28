@@ -2,8 +2,9 @@
  * LoginScreen.jsx — ClassBoard sign-in page
  *
  * Teacher section:
- *  • Shows Google "Sign in with Google" button when REACT_APP_GOOGLE_CLIENT_ID is set
- *  • Falls back to name + email form when Google OAuth is not yet configured
+ *  • "Sign in with Google" button → standard OAuth 2.0 redirect flow
+ *    (avoids origin_mismatch from the GIS JavaScript library)
+ *  • Falls back to name + email form when no Google Client ID configured
  *
  * Student section:
  *  • Name + session code → joins classroom directly (no account needed)
@@ -11,16 +12,12 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../AuthContext";
+import { API_BASE_URL } from "../config";
 
-// Only import GoogleLogin if the package is available and client ID is set
 const GOOGLE_CLIENT_ID = process.env.REACT_APP_GOOGLE_CLIENT_ID || "";
-let GoogleLogin = null;
-if (GOOGLE_CLIENT_ID) {
-  try { GoogleLogin = require("@react-oauth/google").GoogleLogin; } catch {}
-}
 
 export default function LoginScreen() {
-  const { login, loginDemo } = useAuth();
+  const { loginDemo } = useAuth();
   const navigate = useNavigate();
 
   // Teacher fallback form
@@ -34,16 +31,17 @@ export default function LoginScreen() {
   const [error,   setError]   = useState("");
   const [loading, setLoading] = useState(false);
 
-  // ── Google sign-in ──────────────────────────────────────────────────────────
-  const handleGoogleSuccess = async (credentialResponse) => {
+  // ── Google OAuth 2.0 redirect (no JS origin needed) ─────────────────────────
+  const handleGoogleRedirect = async () => {
     setLoading(true);
     setError("");
     try {
-      await login(credentialResponse.credential);
-      navigate("/");
-    } catch {
-      setError("Google sign-in failed. Please try again.");
-    } finally {
+      const res  = await fetch(`${API_BASE_URL}/api/auth/google/url`);
+      const data = await res.json();
+      if (data.url) window.location.href = data.url;
+      else throw new Error("No URL returned");
+    } catch (e) {
+      setError("Could not start Google sign-in. Try name/email login below.");
       setLoading(false);
     }
   };
@@ -103,41 +101,30 @@ export default function LoginScreen() {
         {/* ── Teacher / Admin Login ─────────────────────────────────────────── */}
         <div style={cardStyle}>
           <h2 style={cardTitleStyle}>👩‍🏫 Teacher / Admin Login</h2>
-          <p style={cardSubStyle}>
-            {GOOGLE_CLIENT_ID
-              ? "Sign in with your Google account to create and manage classes."
-              : "Enter your name and email to sign in as a teacher."}
-          </p>
+          <p style={cardSubStyle}>Sign in with Google to create and manage your classes.</p>
 
           {loading ? (
-            <div style={{ textAlign: "center", color: "#64748b", padding: "16px 0" }}>
-              Signing in…
-            </div>
-          ) : GOOGLE_CLIENT_ID && GoogleLogin ? (
-            /* Google OAuth button */
-            <div style={{ display: "flex", justifyContent: "center" }}>
-              <GoogleLogin
-                onSuccess={handleGoogleSuccess}
-                onError={() => setError("Google sign-in failed.")}
-                useOneTap={false}
-                theme="filled_black"
-                shape="pill"
-                text="signin_with"
-                locale="en"
+            <div style={{ textAlign: "center", color: "#64748b", padding: "16px 0" }}>Signing in…</div>
+          ) : GOOGLE_CLIENT_ID ? (
+            /* Standard OAuth 2.0 redirect button — no origin_mismatch issues */
+            <button onClick={handleGoogleRedirect} style={googleBtnStyle}>
+              <img
+                src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
+                alt="Google"
+                style={{ width: 20, height: 20 }}
               />
-            </div>
+              Sign in with Google
+            </button>
           ) : (
-            /* Fallback: name + email */
+            /* Fallback: name + email when no Google Client ID */
             <>
-              {!GOOGLE_CLIENT_ID && (
-                <div style={{
-                  background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.3)",
-                  borderRadius: 8, padding: "8px 12px", marginBottom: 14,
-                  fontSize: 12, color: "#fbbf24",
-                }}>
-                  ⚠️ Google OAuth not configured — using name/email login
-                </div>
-              )}
+              <div style={{
+                background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.3)",
+                borderRadius: 8, padding: "8px 12px", marginBottom: 14,
+                fontSize: 12, color: "#fbbf24",
+              }}>
+                ⚠️ Google OAuth not configured — using name/email login
+              </div>
               <input
                 placeholder="Your name"
                 value={teacherName}
@@ -223,6 +210,15 @@ const inputStyle = {
   borderRadius: 10, padding: "12px 14px",
   color: "#e2e8f0", fontSize: 14, outline: "none",
   fontFamily: "inherit",
+};
+
+const googleBtnStyle = {
+  width: "100%", padding: "12px 0", borderRadius: 10,
+  background: "#fff", border: "none", cursor: "pointer",
+  fontSize: 15, fontWeight: 600, color: "#1f2937",
+  display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
+  boxShadow: "0 1px 3px rgba(0,0,0,0.3)",
+  transition: "box-shadow 0.2s",
 };
 
 const joinBtnStyle = {

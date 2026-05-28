@@ -6,6 +6,7 @@ import HomeScreen     from "./views/HomeScreen";
 import ClassroomScreen from "./views/ClassroomScreen";
 import SessionHistory from "./views/SessionHistory";
 import SessionReplay  from "./views/SessionReplay";
+import OAuthCallback  from "./views/OAuthCallback";
 
 // Google Client ID — set REACT_APP_GOOGLE_CLIENT_ID in Vercel env vars
 const GOOGLE_CLIENT_ID = process.env.REACT_APP_GOOGLE_CLIENT_ID || "";
@@ -40,6 +41,7 @@ function AppRoutes() {
       <Routes>
         {/* Public routes */}
         <Route path="/login"         element={<LoginScreen />} />
+        <Route path="/api-callback"  element={<OAuthCallback />} />
         <Route path="/classroom"     element={<ClassroomScreen />} />
         <Route path="/replay/:code"  element={<SessionReplay />} />
 

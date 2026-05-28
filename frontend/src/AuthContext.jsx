@@ -63,6 +63,13 @@ export function AuthProvider({ children }) {
     return u;
   }, []);
 
+  // ── Login with pre-issued token (redirect OAuth flow) ──────────────────────
+  const loginWithToken = useCallback((t, u) => {
+    localStorage.setItem("cb_token", t);
+    setToken(t);
+    setUser(u);
+  }, []);
+
   // ── Logout ──────────────────────────────────────────────────────────────────
   const logout = useCallback(() => {
     localStorage.removeItem("cb_token");
@@ -78,7 +85,7 @@ export function AuthProvider({ children }) {
   }, [token]);
 
   return (
-    <AuthContext.Provider value={{ user, token, loading, login, loginDemo, logout, authFetch }}>
+    <AuthContext.Provider value={{ user, token, loading, login, loginWithToken, loginDemo, logout, authFetch }}>
       {children}
     </AuthContext.Provider>
   );
