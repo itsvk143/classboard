@@ -74,11 +74,12 @@ const User     = mongoose.model('User',     userSchema);
 let dbError = null;
 
 async function connectDB() {
-  const uri = process.env.MONGODB_URI || process.env.MONGO_URL;
+  let uri = process.env.MONGODB_URI || process.env.MONGO_URL;
   if (!uri) {
     console.warn("⚠️  MONGODB_URI / MONGO_URL not set — running in memory-only mode (data lost on restart)");
     return; // Don't crash — just skip DB
   }
+  uri = uri.trim();
   try {
     await mongoose.connect(uri, { dbName: "classboard" });
     console.log("✅ MongoDB connected");
