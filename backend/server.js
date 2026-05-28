@@ -105,8 +105,8 @@ app.post("/api/auth/google", async (req, res) => {
 
 // ── Standard OAuth 2.0 redirect flow (more reliable — no JS origin check) ────
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || "";
-const FRONTEND_URL = process.env.FRONTEND_URL || "https://classroom-eight.vercel.app";
-const BACKEND_URL  = process.env.BACKEND_URL  || "https://classboard-production-9f4d.up.railway.app";
+const FRONTEND_URL = (process.env.FRONTEND_URL || "https://classroom-eight.vercel.app").trim();
+const BACKEND_URL  = (process.env.BACKEND_URL  || "https://classboard-production-9f4d.up.railway.app").trim();
 
 app.get("/api/auth/google/url", (req, res) => {
   const params = new URLSearchParams({
