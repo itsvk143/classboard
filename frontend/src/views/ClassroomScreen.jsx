@@ -202,6 +202,8 @@ export default function ClassroomScreen() {
       setRole("teacher");
       // Persist so refresh rejoins the same session
       localStorage.setItem('classboard_session', JSON.stringify({ name, email, code, role: 'teacher', sessionTitle }));
+      // Update history state so page refreshes don't try to create a new session
+      navigate(location.pathname, { replace: true, state: { ...state, action: "join", code } });
       showToast(`Session created! Code: ${code}`);
     });
 
@@ -214,6 +216,8 @@ export default function ClassroomScreen() {
       if (canvasState) loadCanvasFromDataURL(canvasState);
       // Persist so refresh rejoins the same session
       localStorage.setItem('classboard_session', JSON.stringify({ name, email, code, role: r, sessionTitle }));
+      // Update history state so page refreshes don't try to create a new session
+      navigate(location.pathname, { replace: true, state: { ...state, action: "join", code } });
       showToast(`Joined session ${code}`);
     });
 
