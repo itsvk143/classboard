@@ -612,6 +612,13 @@ io.on("connection", (socket) => {
     socket.to(code).emit("canvas-update", { dataURL, senderId: socket.id });
   });
 
+  socket.on("canvas-update", ({ code, dataURL }) => {
+    const room = rooms[code];
+    if (!room) return;
+    room.canvasState = dataURL;
+    socket.to(code).emit("canvas-update", { dataURL, senderId: socket.id });
+  });
+
   socket.on("draw-stroke", ({ code, x0, y0, x1, y1, color, stroke, tool }) => {
     socket.to(code).emit("draw-stroke", { x0, y0, x1, y1, color, stroke, tool });
   });
@@ -641,6 +648,10 @@ io.on("connection", (socket) => {
   // Replaces old snapshot: keeps storage at 1 per session
   socket.on("save-snapshot", async ({ code, dataURL }) => {
     try {
+      const room = rooms[code];
+      if (room) {
+        room.canvasState = dataURL;
+      }
       await saveSnapshot(code, dataURL, false);
       socket.emit("snapshot-saved", { timestamp: new Date().toISOString() });
       console.log(`Snapshot saved for ${code}`);
