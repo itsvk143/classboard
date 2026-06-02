@@ -18,11 +18,15 @@
     <!-- SPA routing: restore path saved by 404.html -->
     <script>
       (function() {
-        var redirect = sessionStorage.getItem('redirect');
-        if (redirect) {
-          sessionStorage.removeItem('redirect');
-          // Replace current history entry with the real path
-          window.history.replaceState(null, null, redirect);
+        try {
+          var redirect = sessionStorage.getItem('redirect');
+          if (redirect) {
+            sessionStorage.removeItem('redirect');
+            // Replace current history entry with the real path
+            window.history.replaceState(null, null, redirect);
+          }
+        } catch (e) {
+          console.error("sessionStorage is blocked:", e);
         }
       })();
     </script>

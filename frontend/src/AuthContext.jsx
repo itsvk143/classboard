@@ -8,11 +8,26 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { API_BASE_URL } from "./config";
 
+const safeStorage = {
+  getItem: (key) => {
+    try { return localStorage.getItem(key); }
+    catch (e) { return null; }
+  },
+  setItem: (key, value) => {
+    try { localStorage.setItem(key, value); }
+    catch (e) {}
+  },
+  removeItem: (key) => {
+    try { localStorage.removeItem(key); }
+    catch (e) {}
+  }
+};
+
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [user,    setUser]    = useState(null);
-  const [token,   setToken]   = useState(() => localStorage.getItem("cb_token") || null);
+  const [token,   setToken]   = useState(() => safeStorage.getItem("cb_token") || null);
   const [loading, setLoading] = useState(true);
 
   // ── Restore session on mount ────────────────────────────────────────────────
@@ -25,7 +40,7 @@ export function AuthProvider({ children }) {
     if (urlToken) {
       // Clean the token from URL immediately
       window.history.replaceState({}, document.title, window.location.pathname);
-      localStorage.setItem("cb_token", urlToken);
+      safeStorage.setItem("cb_token", urlToken);
       setToken(urlToken);
       // Decode user from JWT (don't need a round-trip to verify here)
       try {
@@ -44,7 +59,7 @@ export function AuthProvider({ children }) {
     }
 
     // ── Case 2: restore from localStorage ──────────────────────────────────
-    const stored = localStorage.getItem("cb_token");
+    const stored = safeStorage.getItem("cb_token");
     if (!stored) { setLoading(false); return; }
 
     fetch(`${API_BASE_URL}/api/auth/me`, {
@@ -53,7 +68,7 @@ export function AuthProvider({ children }) {
       .then(r => r.ok ? r.json() : Promise.reject())
       .then(({ user: u }) => { setUser(u); setToken(stored); })
       .catch(() => {
-        localStorage.removeItem("cb_token");
+        safeStorage.removeItem("cb_token");
         setToken(null);
       })
       .finally(() => setLoading(false));
@@ -68,7 +83,7 @@ export function AuthProvider({ children }) {
     });
     if (!res.ok) throw new Error("Google login failed");
     const { token: t, user: u } = await res.json();
-    localStorage.setItem("cb_token", t);
+    safeStorage.setItem("cb_token", t);
     setToken(t);
     setUser(u);
     return u;
@@ -84,7 +99,7 @@ export function AuthProvider({ children }) {
     });
     if (!res.ok) throw new Error("Login failed");
     const { token: t, user: u } = await res.json();
-    localStorage.setItem("cb_token", t);
+    safeStorage.setItem("cb_token", t);
     setToken(t);
     setUser(u);
     return u;
@@ -92,15 +107,15 @@ export function AuthProvider({ children }) {
 
   // ── Login with pre-issued token (redirect OAuth flow) ──────────────────────
   const loginWithToken = useCallback((t, u) => {
-    localStorage.setItem("cb_token", t);
+    safeStorage.setItem("cb_token", t);
     setToken(t);
     setUser(u);
   }, []);
 
   // ── Logout ──────────────────────────────────────────────────────────────────
   const logout = useCallback(() => {
-    localStorage.removeItem("cb_token");
-    localStorage.removeItem("classboard_session");
+    safeStorage.removeItem("cb_token");
+    safeStorage.removeItem("classboard_session");
     setToken(null);
     setUser(null);
   }, []);

@@ -3,11 +3,18 @@
   <head>
     <meta charset="utf-8" />
     <title>ClassBoard</title>
+    <style>
+      html, body { background: #0d1117; margin: 0; padding: 0; }
+    </style>
     <script>
       // SPA redirect: store path and redirect to index.html
       // so React Router can handle the route.
-      var path = window.location.pathname + window.location.search;
-      sessionStorage.setItem('redirect', path);
+      try {
+        var path = window.location.pathname + window.location.search;
+        sessionStorage.setItem('redirect', path);
+      } catch (e) {
+        console.error("sessionStorage is blocked:", e);
+      }
       window.location.replace('/');
     </script>
   </head>
