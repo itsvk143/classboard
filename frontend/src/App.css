@@ -340,6 +340,11 @@ body {
   gap: 12px;
   flex-wrap: nowrap;
   min-height: 48px;
+  position: sticky;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000;
 }
 
 /* ── Full-width toolbar bar (legacy — kept for any remaining refs) ──────── */
@@ -376,10 +381,17 @@ body {
   flex-wrap: nowrap;
   white-space: nowrap;
 }
-.toolbar-inline::-webkit-scrollbar { display: none; }
+.toolbar-inline::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
 
 @media (max-width: 768px) {
-  .classroom-header { padding: 6px 10px; gap: 6px; flex-wrap: wrap; }
+  .classroom-header {
+    padding: 6px 10px;
+    gap: 6px;
+    flex-wrap: wrap;
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+  }
   .toolbar-inline {
     order: 3;               /* push to second row */
     flex: none;
@@ -389,6 +401,49 @@ body {
     gap: 3px;
   }
   .toolbar-bar { padding: 3px 8px; gap: 3px; }
+}
+
+/* Ensure toolbar and header elements remain highly compact and perfectly aligned on small heights/landscapes */
+@media (max-height: 520px) {
+  .classroom-header {
+    padding: 4px 8px !important;
+    min-height: 38px !important;
+  }
+  .toolbar-inline {
+    gap: 2px !important;
+    padding-top: 2px !important;
+  }
+  .tool-btn {
+    width: 26px !important;
+    height: 26px !important;
+  }
+  .color-swatch {
+    width: 15px !important;
+    height: 15px !important;
+  }
+  .stroke-slider {
+    width: 50px !important;
+  }
+}
+
+/* Ensure no elements overflow on extremely narrow portrait mobile devices */
+@media (max-width: 600px) {
+  .zoom-controls button:nth-child(4) {
+    display: none !important; /* Hide zoom Reset button to save space */
+  }
+  .zoom-controls {
+    gap: 4px !important;
+    padding: 2px 4px !important;
+  }
+  .classroom-code-badge {
+    padding: 4px 8px !important;
+    font-size: 10px !important;
+    letter-spacing: 1px !important;
+  }
+  .hdr-btn {
+    padding: 5px 10px !important;
+    font-size: 11px !important;
+  }
 }
 
 .classroom-title-area {

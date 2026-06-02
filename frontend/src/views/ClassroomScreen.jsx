@@ -94,7 +94,7 @@ export default function ClassroomScreen() {
   // Canvas
   const canvasRef = useRef(null);
   const ctxRef = useRef(null);
-  const [tool, setTool] = useState(TOOLS.PEN);
+  const [tool, setTool] = useState(TOOLS.PAN);
   const [color, setColor] = useState("#000000");
   const [stroke, setStroke] = useState(4);
   const isPainting = useRef(false);
