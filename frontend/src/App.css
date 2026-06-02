@@ -370,7 +370,7 @@ body {
 /* On mobile : wraps to a full-width second row                           */
 .toolbar-inline {
   flex: 1;           /* fill all space between left and right sections */
-  min-width: 0;      /* allow shrinking below intrinsic size */
+  min-width: 260px;  /* prevent Safari Webkit from squeezing to 0px on initial load */
   display: flex;
   align-items: center;
   gap: 4px;
@@ -383,7 +383,7 @@ body {
 }
 .toolbar-inline::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
 
-@media (max-width: 768px) {
+@media (max-width: 1024px) {
   .classroom-header {
     padding: 6px 10px;
     gap: 6px;
