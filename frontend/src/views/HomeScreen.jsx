@@ -17,6 +17,23 @@ const HomeScreen = () => {
   const [code,         setCode]         = useState("");
   const [error,        setError]        = useState("");
 
+  // 🛡️ Admin Dashboard States
+  const [activeWorkspace, setActiveWorkspace] = useState("workspace");
+  const [adminTab, setActiveAdminTab] = useState("teachers");
+  const [adminTeachers, setAdminTeachers] = useState([]);
+  const [adminSessions, setAdminSessions] = useState([]);
+  const [adminSearch, setAdminSearch] = useState("");
+  const [loadingAdmin, setLoadingAdmin] = useState(false);
+
+  // Modals for Banning & Editing
+  const [banModal, setBanModal] = useState(null); // { teacher }
+  const [banExpiresAt, setBanExpiresAt] = useState("");
+  const [banReason, setBanReason] = useState("");
+
+  const [editSessionModal, setEditSessionModal] = useState(null); // { session }
+  const [editSessionTitle, setEditSessionTitle] = useState("");
+  const [editSessionActive, setEditSessionActive] = useState(true);
+
   // Sync if user info arrives later (e.g. after token restore)
   useEffect(() => {
     if (user) {
@@ -36,6 +53,125 @@ const HomeScreen = () => {
   // Modal State for folder management
   const [modalState, setModalState] = useState(null);
   const [modalInput, setModalInput] = useState("");
+
+  // 🛡️ Admin Dashboard Action Handlers
+  const loadAdminData = useCallback(() => {
+    if (user?.role !== "admin") return;
+    setLoadingAdmin(true);
+    authFetch(`${API_BASE_URL}/api/admin/teachers`)
+      .then(r => {
+        if (!r.ok) throw new Error("Unauthorized");
+        return r.json();
+      })
+      .then(data => {
+        setAdminTeachers(Array.isArray(data) ? data : []);
+      })
+      .catch(err => console.error("Admin fetch teachers error:", err));
+
+    authFetch(`${API_BASE_URL}/api/sessions`)
+      .then(r => r.json())
+      .then(data => {
+        setAdminSessions(Array.isArray(data) ? data : []);
+        setLoadingAdmin(false);
+      })
+      .catch(err => {
+        console.error("Admin fetch sessions error:", err);
+        setLoadingAdmin(false);
+      });
+  }, [user, authFetch]);
+
+  useEffect(() => {
+    if (activeWorkspace === "admin") {
+      loadAdminData();
+    }
+  }, [activeWorkspace, loadAdminData]);
+
+  const handleBanTeacher = (teacher, perm = false) => {
+    if (perm) {
+      if (!window.confirm(`Permanently ban ${teacher.name} (${teacher.email})?`)) return;
+      authFetch(`${API_BASE_URL}/api/admin/teachers/${teacher.googleId}/ban`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isBanned: true, banExpiresAt: null, banReason: "Violated community guidelines" })
+      }).then(() => {
+        loadAdminData();
+      });
+    } else {
+      setBanExpiresAt("");
+      setBanReason("");
+      setBanModal({ teacher });
+    }
+  };
+
+  const handleSaveBan = () => {
+    if (!banModal) return;
+    const { teacher } = banModal;
+    authFetch(`${API_BASE_URL}/api/admin/teachers/${teacher.googleId}/ban`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        isBanned: true,
+        banExpiresAt: banExpiresAt || null,
+        banReason: banReason || "Violated terms of service"
+      })
+    }).then(() => {
+      setBanModal(null);
+      loadAdminData();
+    });
+  };
+
+  const handleUnbanTeacher = (teacher) => {
+    if (!window.confirm(`Lift ban for ${teacher.name} (${teacher.email})?`)) return;
+    authFetch(`${API_BASE_URL}/api/admin/teachers/${teacher.googleId}/ban`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ isBanned: false, banExpiresAt: null, banReason: "" })
+    }).then(() => {
+      loadAdminData();
+    });
+  };
+
+  const handleDeleteTeacher = (teacher) => {
+    if (!window.confirm(`WARNING: This will permanently delete ${teacher.name}'s (${teacher.email}) account. This CANNOT be undone. Proceed?`)) return;
+    authFetch(`${API_BASE_URL}/api/admin/teachers/${teacher.googleId}`, {
+      method: "DELETE"
+    }).then(() => {
+      loadAdminData();
+    });
+  };
+
+  const handleEditSession = (session) => {
+    setEditSessionTitle(session.title || "");
+    setEditSessionActive(session.active);
+    setEditSessionModal({ session });
+  };
+
+  const handleSaveSessionEdit = () => {
+    if (!editSessionModal) return;
+    const { session } = editSessionModal;
+    authFetch(`${API_BASE_URL}/api/admin/sessions/${session.code}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: editSessionTitle,
+        active: editSessionActive
+      })
+    }).then(() => {
+      setEditSessionModal(null);
+      loadAdminData();
+      loadData();
+    });
+  };
+
+  const handleDeleteSessionAdmin = (session) => {
+    if (!window.confirm(`Permanently delete session "${session.title}" (${session.code}) and all its snapshot data?`)) return;
+    authFetch(`${API_BASE_URL}/api/admin/sessions/${session.code}`, {
+      method: "DELETE"
+    }).then(() => {
+      loadAdminData();
+      loadData();
+    });
+  };
 
   const loadData = useCallback(() => {
     authFetch(`${API_BASE_URL}/api/sessions`)
@@ -278,13 +414,56 @@ const HomeScreen = () => {
         
         {/* ── Welcome & Realtime Stats Overview ── */}
         <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-          <div>
-            <h1 style={{ fontSize: "32px", fontWeight: "800", color: "#f8fafc", margin: 0, fontFamily: "'Space Grotesk', sans-serif", letterSpacing: "-0.5px" }}>
-              Welcome back, {user?.name?.split(" ")[0] || "Teacher"} 👋
-            </h1>
-            <p style={{ color: "var(--text2)", fontSize: "14px", marginTop: "6px", margin: 0 }}>
-              Launch collaborative rooms instantly, manage organized folders, and access student canvas snap-back history.
-            </p>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "16px" }}>
+            <div>
+              <h1 style={{ fontSize: "32px", fontWeight: "800", color: "#f8fafc", margin: 0, fontFamily: "'Space Grotesk', sans-serif", letterSpacing: "-0.5px" }}>
+                Welcome back, {user?.name?.split(" ")[0] || "Teacher"} 👋
+              </h1>
+              <p style={{ color: "var(--text2)", fontSize: "14px", marginTop: "6px", margin: 0 }}>
+                Launch collaborative rooms instantly, manage organized folders, and access student canvas snap-back history.
+              </p>
+            </div>
+            
+            {user?.role === "admin" && (
+              <div style={{ display: "flex", background: "rgba(0,0,0,0.35)", borderRadius: "30px", padding: "4px", border: "1px solid rgba(255,255,255,0.08)", backdropFilter: "blur(10px)" }}>
+                <button
+                  type="button"
+                  onClick={() => setActiveWorkspace("workspace")}
+                  style={{
+                    padding: "8px 18px",
+                    border: "none",
+                    borderRadius: "24px",
+                    background: activeWorkspace === "workspace" ? "var(--primary)" : "transparent",
+                    color: activeWorkspace === "workspace" ? "#ffffff" : "#94a3b8",
+                    fontSize: "13px",
+                    fontWeight: "700",
+                    cursor: "pointer",
+                    transition: "all 0.2s",
+                    boxShadow: activeWorkspace === "workspace" ? "0 4px 12px rgba(79,142,247,0.3)" : "none"
+                  }}
+                >
+                  🏫 Teacher Workspace
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveWorkspace("admin")}
+                  style={{
+                    padding: "8px 18px",
+                    border: "none",
+                    borderRadius: "24px",
+                    background: activeWorkspace === "admin" ? "linear-gradient(135deg, #f59e0b, #d97706)" : "transparent",
+                    color: activeWorkspace === "admin" ? "#ffffff" : "#94a3b8",
+                    fontSize: "13px",
+                    fontWeight: "700",
+                    cursor: "pointer",
+                    transition: "all 0.2s",
+                    boxShadow: activeWorkspace === "admin" ? "0 4px 12px rgba(245,158,11,0.3)" : "none"
+                  }}
+                >
+                  🔑 Admin Dashboard
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Stats Bar */}
@@ -332,8 +511,316 @@ const HomeScreen = () => {
         {/* ── Dashboard Panels Split Layout ── */}
         <div style={{ display: "flex", gap: "32px", width: "100%", flexWrap: "wrap" }}>
           
-          {/* Left Panel: Past Sessions and Folder Organization */}
-          <div style={{ flex: "2", minWidth: "350px", display: "flex", flexDirection: "column", gap: "20px" }}>
+          {activeWorkspace === "admin" ? (
+            /* 🔑 FULL-WIDTH / FLEXIBLE ADMIN PANEL ── */
+            <div style={{ flex: "2", minWidth: "350px", display: "flex", flexDirection: "column", gap: "24px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "16px", borderBottom: "1px solid rgba(255,255,255,0.06)", paddingBottom: "16px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                  <span style={{ fontSize: "24px" }}>🛡️</span>
+                  <h2 style={{ fontSize: "22px", fontWeight: "800", color: "#f8fafc", margin: 0, fontFamily: "'Space Grotesk', sans-serif" }}>Administrative Controls</h2>
+                </div>
+
+                {/* Search & Tab row */}
+                <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+                  <input
+                    type="text"
+                    placeholder={adminTab === "teachers" ? "Search teachers..." : "Search sessions..."}
+                    value={adminSearch}
+                    onChange={(e) => setAdminSearch(e.target.value)}
+                    style={{
+                      background: "rgba(13,17,23,0.5)",
+                      border: "1px solid rgba(255,255,255,0.08)",
+                      borderRadius: "10px",
+                      padding: "8px 16px",
+                      fontSize: "13px",
+                      color: "#f1f5f9",
+                      width: "220px",
+                      outline: "none",
+                      borderStyle: "solid"
+                    }}
+                  />
+
+                  <div style={{ display: "flex", background: "rgba(0,0,0,0.2)", borderRadius: "10px", padding: "3px", border: "1px solid rgba(255,255,255,0.04)" }}>
+                    <button
+                      type="button"
+                      onClick={() => { setActiveAdminTab("teachers"); setAdminSearch(""); }}
+                      style={{
+                        padding: "6px 12px",
+                        border: "none",
+                        borderRadius: "6px",
+                        background: adminTab === "teachers" ? "rgba(255,255,255,0.08)" : "transparent",
+                        color: adminTab === "teachers" ? "#ffffff" : "#94a3b8",
+                        fontSize: "12px",
+                        fontWeight: "600",
+                        cursor: "pointer",
+                        transition: "all 0.15s"
+                      }}
+                    >
+                      👩‍🏫 Teachers ({adminTeachers.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setActiveAdminTab("sessions"); setAdminSearch(""); }}
+                      style={{
+                        padding: "6px 12px",
+                        border: "none",
+                        borderRadius: "6px",
+                        background: adminTab === "sessions" ? "rgba(255,255,255,0.08)" : "transparent",
+                        color: adminTab === "sessions" ? "#ffffff" : "#94a3b8",
+                        fontSize: "12px",
+                        fontWeight: "600",
+                        cursor: "pointer",
+                        transition: "all 0.15s"
+                      }}
+                    >
+                      📺 All Sessions ({adminSessions.length})
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {loadingAdmin ? (
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "60px 0", gap: "12px" }}>
+                  <div style={{ width: "32px", height: "32px", border: "3px solid rgba(245,158,11,0.1)", borderTopColor: "#f59e0b", borderRadius: "50%", animation: "spin 1s linear infinite" }} />
+                  <span style={{ color: "var(--text3)", fontSize: "14px" }}>Loading administrative records...</span>
+                </div>
+              ) : adminTab === "teachers" ? (
+                /* 👩‍🏫 REGISTERED TEACHERS ADMIN TAB ── */
+                <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+                  {adminTeachers
+                    .filter(t => t.name.toLowerCase().includes(adminSearch.toLowerCase()) || t.email.toLowerCase().includes(adminSearch.toLowerCase()))
+                    .map(teacher => {
+                      const isTempBanned = teacher.banExpiresAt && new Date(teacher.banExpiresAt) > new Date();
+                      const isPermBanned = teacher.isBanned && !teacher.banExpiresAt;
+                      const isCurrentlyBanned = isPermBanned || isTempBanned;
+
+                      return (
+                        <div
+                          key={teacher.googleId}
+                          style={{
+                            background: "rgba(22,27,34,0.4)",
+                            border: "1px solid var(--border)",
+                            borderRadius: "16px",
+                            padding: "16px",
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            flexWrap: "wrap",
+                            gap: "16px",
+                            boxShadow: "0 4px 20px rgba(0,0,0,0.1)"
+                          }}
+                        >
+                          <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+                            {teacher.picture ? (
+                              <img src={teacher.picture} alt="avatar" style={{ width: "42px", height: "42px", borderRadius: "50%", border: "2px solid rgba(255,255,255,0.06)" }} />
+                            ) : (
+                              <div style={{ width: "42px", height: "42px", borderRadius: "50%", background: "var(--primary)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "18px", fontWeight: "bold" }}>{teacher.name?.[0]}</div>
+                            )}
+                            <div>
+                              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                                <span style={{ fontWeight: "700", fontSize: "15px", color: "#f1f5f9" }}>{teacher.name}</span>
+                                <span style={{ fontSize: "11px", padding: "2px 8px", borderRadius: "10px", background: teacher.role === "admin" ? "rgba(245,158,11,0.15)" : "rgba(79,142,247,0.1)", color: teacher.role === "admin" ? "#fbbf24" : "var(--primary)", fontWeight: "700" }}>
+                                  {teacher.role.toUpperCase()}
+                                </span>
+                              </div>
+                              <div style={{ fontSize: "12px", color: "var(--text3)", marginTop: "2px" }}>{teacher.email}</div>
+                              <div style={{ fontSize: "11px", color: "var(--text3)", marginTop: "4px" }}>Registered: {formatDate(teacher.createdAt)}</div>
+                            </div>
+                          </div>
+
+                          {/* Ban badges & admin action buttons */}
+                          <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+                            {isCurrentlyBanned && (
+                              <div style={{
+                                background: "rgba(239, 68, 68, 0.12)",
+                                border: "1px solid rgba(239, 68, 68, 0.25)",
+                                borderRadius: "8px",
+                                padding: "6px 12px",
+                                display: "flex",
+                                flexDirection: "column",
+                                alignItems: "flex-start",
+                                gap: "2px"
+                              }}>
+                                <span style={{ color: "#ef4444", fontSize: "11px", fontWeight: "800", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                                  ⚠️ {isPermBanned ? "Permanently Banned" : "Temporarily Banned"}
+                                </span>
+                                {isTempBanned && (
+                                  <span style={{ fontSize: "10px", color: "#fca5a5" }}>
+                                    Expires: {new Date(teacher.banExpiresAt).toLocaleString()}
+                                  </span>
+                                )}
+                                {teacher.banReason && (
+                                  <span style={{ fontSize: "10px", color: "#f87171", fontStyle: "italic" }}>
+                                    "{teacher.banReason}"
+                                  </span>
+                                )}
+                              </div>
+                            )}
+
+                            {teacher.googleId !== user?.googleId && (
+                              <div style={{ display: "flex", gap: "8px" }}>
+                                {isCurrentlyBanned ? (
+                                  <button
+                                    onClick={() => handleUnbanTeacher(teacher)}
+                                    style={{
+                                      background: "rgba(34, 197, 94, 0.12)",
+                                      border: "1px solid rgba(34, 197, 94, 0.25)",
+                                      color: "#4ade80",
+                                      padding: "6px 12px",
+                                      borderRadius: "8px",
+                                      fontSize: "12px",
+                                      fontWeight: "600",
+                                      cursor: "pointer",
+                                      transition: "all 0.15s"
+                                    }}
+                                  >
+                                    🟢 Lift Ban
+                                  </button>
+                                ) : (
+                                  <>
+                                    <button
+                                      onClick={() => handleBanTeacher(teacher, false)}
+                                      style={{
+                                        background: "rgba(245, 158, 11, 0.1)",
+                                        border: "1px solid rgba(245, 158, 11, 0.2)",
+                                        color: "#f59e0b",
+                                        padding: "6px 12px",
+                                        borderRadius: "8px",
+                                        fontSize: "12px",
+                                        fontWeight: "600",
+                                        cursor: "pointer",
+                                        transition: "all 0.15s"
+                                      }}
+                                    >
+                                      ⏳ Temp Ban
+                                    </button>
+                                    <button
+                                      onClick={() => handleBanTeacher(teacher, true)}
+                                      style={{
+                                        background: "rgba(239, 68, 68, 0.08)",
+                                        border: "1px solid rgba(239, 68, 68, 0.2)",
+                                        color: "#ef4444",
+                                        padding: "6px 12px",
+                                        borderRadius: "8px",
+                                        fontSize: "12px",
+                                        fontWeight: "600",
+                                        cursor: "pointer",
+                                        transition: "all 0.15s"
+                                      }}
+                                    >
+                                      🛑 Perm Ban
+                                    </button>
+                                  </>
+                                )}
+                                <button
+                                  onClick={() => handleDeleteTeacher(teacher)}
+                                  style={{
+                                    background: "rgba(239, 68, 68, 0.05)",
+                                    border: "1px solid rgba(239, 68, 68, 0.15)",
+                                    color: "#f87171",
+                                    padding: "6px 12px",
+                                    borderRadius: "8px",
+                                    fontSize: "12px",
+                                    fontWeight: "600",
+                                    cursor: "pointer",
+                                    transition: "all 0.15s"
+                                  }}
+                                  title="Delete Account"
+                                >
+                                  🗑️ Delete
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              ) : (
+                /* 📺 CLASS SESSIONS ADMIN TAB ── */
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(290px, 1fr))", gap: "16px" }}>
+                  {adminSessions
+                    .filter(s => s.code.toLowerCase().includes(adminSearch.toLowerCase()) || s.title.toLowerCase().includes(adminSearch.toLowerCase()))
+                    .map(s => (
+                      <div
+                        key={s.code}
+                        style={{
+                          background: "rgba(22,27,34,0.4)",
+                          border: "1px solid var(--border)",
+                          borderRadius: "16px",
+                          padding: "16px",
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: "12px",
+                          boxShadow: "0 4px 20px rgba(0,0,0,0.1)"
+                        }}
+                      >
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px" }}>
+                          <div>
+                            <div style={{ fontWeight: "700", fontSize: "14px", color: "#f1f5f9", overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{s.title}</div>
+                            <div style={{ fontSize: "11px", color: "var(--text3)", marginTop: "2px" }}>Code: <span style={{ fontFamily: "monospace", color: "var(--primary)", fontWeight: "bold" }}>{s.code}</span></div>
+                          </div>
+                          
+                          <div style={{ display: "flex", gap: "6px" }}>
+                            <button
+                              onClick={() => handleEditSession(s)}
+                              style={{ background: "rgba(255,255,255,0.03)", border: "1px solid var(--border)", color: "#cbd5e1", width: "26px", height: "26px", borderRadius: "6px", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontSize: "12px", transition: "all 0.15s" }}
+                              title="Edit Session"
+                            >✏️</button>
+                            <button
+                              onClick={() => handleDeleteSessionAdmin(s)}
+                              style={{ background: "rgba(239,68,68,0.05)", border: "1px solid rgba(239,68,68,0.15)", color: "#f87171", width: "26px", height: "26px", borderRadius: "6px", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontSize: "12px", transition: "all 0.15s" }}
+                              title="Delete Session"
+                            >🗑️</button>
+                          </div>
+                        </div>
+
+                        <div style={{ fontSize: "11px", color: "#94a3b8", display: "flex", flexDirection: "column", gap: "4px", borderTop: "1px solid rgba(255,255,255,0.04)", paddingTop: "8px" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "4px" }}>
+                            <span style={{
+                              display: "inline-block",
+                              width: "6px",
+                              height: "6px",
+                              borderRadius: "50%",
+                              background: s.active ? "#22c55e" : "#64748b",
+                              boxShadow: s.active ? "0 0 6px #22c55e" : "none"
+                            }} />
+                            <span style={{ color: s.active ? "#4ade80" : "#64748b", fontWeight: "700", fontSize: "9px", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                              {s.active ? "Live Room" : "Ended"}
+                            </span>
+                          </div>
+                          <div>👤 Teacher: <span style={{ fontWeight: "600" }}>{s.createdBy}</span> ({s.teacherEmail})</div>
+                          <div>🕐 Created: {formatDate(s.createdAt)}</div>
+                          {s.endedAt && <div>⏱ Ended: {formatDate(s.endedAt)}</div>}
+                          <div>📂 Folder: <span style={{ fontStyle: s.folder ? "normal" : "italic" }}>{s.folder || "None"}</span></div>
+                          <div>📦 Snapshots: {s.snapshotCount || 0}</div>
+                        </div>
+
+                        <button
+                          onClick={() => navigate(`/replay/${s.code}`)}
+                          style={{
+                            background: "rgba(79,142,247,0.08)",
+                            border: "1px solid rgba(79,142,247,0.18)",
+                            color: "var(--primary)",
+                            borderRadius: "8px",
+                            padding: "6px 0",
+                            fontSize: "12px",
+                            fontWeight: "700",
+                            cursor: "pointer",
+                            transition: "all 0.15s",
+                            marginTop: "4px"
+                          }}
+                        >
+                          👁️ View Replay & Logs
+                        </button>
+                      </div>
+                    ))}
+                </div>
+              )}
+            </div>
+          ) : (
+            /* 🏫 Left Panel: Past Sessions and Folder Organization */
+            <div style={{ flex: "2", minWidth: "350px", display: "flex", flexDirection: "column", gap: "20px" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
                 <span style={{ fontSize: "22px" }}>📋</span>
@@ -566,6 +1053,7 @@ const HomeScreen = () => {
               </div>
             )}
           </div>
+          )}
 
           {/* Right Panel: Sleek Card containing tabs to Join / Create classrooms */}
           <div style={{ flex: "1", minWidth: "300px", display: "flex", flexDirection: "column" }}>
@@ -776,6 +1264,87 @@ const HomeScreen = () => {
             <div style={{ display: "flex", justifyContent: "flex-end", gap: "12px" }}>
               <button onClick={() => setModalState(null)} className="home-btn" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid var(--border)", color: "#cbd5e1", width: "auto", margin: 0, padding: "10px 20px" }}>Cancel</button>
               <button onClick={handleModalSubmit} className="home-btn primary" style={{ width: "auto", margin: 0, padding: "10px 20px" }}>Save</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ⏳ Temporary/Permanent Ban Modal overlay */}
+      {banModal && (
+        <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.75)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }}>
+          <div style={{ background: "var(--bg2)", border: "1px solid var(--border)", borderRadius: "20px", padding: "28px", width: "420px", maxWidth: "95%", boxShadow: "0 20px 40px rgba(0,0,0,0.4)", display: "flex", flexDirection: "column", gap: "20px" }}>
+            <h3 style={{ margin: 0, fontSize: "18px", fontWeight: "800", color: "#f8fafc", display: "flex", alignItems: "center", gap: "8px" }}>
+              ⏳ Ban Teacher: {banModal.teacher.name}
+            </h3>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+              <div className="home-field" style={{ margin: 0 }}>
+                <label style={{ fontSize: "12px", color: "#cbd5e1", fontWeight: "600", marginBottom: "4px" }}>Ban Expiration Date & Time <span style={{ color: "var(--text3)" }}>(Leave empty for Permanent Ban)</span></label>
+                <input
+                  type="datetime-local"
+                  className="home-input"
+                  style={{ width: "100%", background: "var(--bg)", border: "1px solid var(--border)", padding: "12px", borderRadius: "10px", color: "var(--text)" }}
+                  value={banExpiresAt}
+                  onChange={(e) => setBanExpiresAt(e.target.value)}
+                />
+              </div>
+
+              <div className="home-field" style={{ margin: 0 }}>
+                <label style={{ fontSize: "12px", color: "#cbd5e1", fontWeight: "600", marginBottom: "4px" }}>Reason for Ban</label>
+                <input
+                  type="text"
+                  className="home-input"
+                  style={{ width: "100%", background: "var(--bg)", border: "1px solid var(--border)", padding: "12px", borderRadius: "10px", color: "var(--text)" }}
+                  placeholder="e.g. Inappropriate content, spamming classes..."
+                  value={banReason}
+                  onChange={(e) => setBanReason(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: "12px" }}>
+              <button onClick={() => setBanModal(null)} className="home-btn" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid var(--border)", color: "#cbd5e1", width: "auto", margin: 0, padding: "10px 20px" }}>Cancel</button>
+              <button onClick={handleSaveBan} className="home-btn primary" style={{ background: "linear-gradient(135deg, #ef4444, #dc2626)", border: "none", color: "#fff", width: "auto", margin: 0, padding: "10px 20px" }}>Apply Ban</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ✏️ Edit Session Modal overlay */}
+      {editSessionModal && (
+        <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.75)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }}>
+          <div style={{ background: "var(--bg2)", border: "1px solid var(--border)", borderRadius: "20px", padding: "28px", width: "420px", maxWidth: "95%", boxShadow: "0 20px 40px rgba(0,0,0,0.4)", display: "flex", flexDirection: "column", gap: "20px" }}>
+            <h3 style={{ margin: 0, fontSize: "18px", fontWeight: "800", color: "#f8fafc", display: "flex", alignItems: "center", gap: "8px" }}>
+              ✏️ Edit Session Settings
+            </h3>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+              <div className="home-field" style={{ margin: 0 }}>
+                <label style={{ fontSize: "12px", color: "#cbd5e1", fontWeight: "600", marginBottom: "4px" }}>Session Title</label>
+                <input
+                  type="text"
+                  className="home-input"
+                  style={{ width: "100%", background: "var(--bg)", border: "1px solid var(--border)", padding: "12px", borderRadius: "10px", color: "var(--text)" }}
+                  value={editSessionTitle}
+                  onChange={(e) => setEditSessionTitle(e.target.value)}
+                />
+              </div>
+
+              <div className="home-field" style={{ margin: 0, display: "flex", alignItems: "center", gap: "10px" }}>
+                <input
+                  type="checkbox"
+                  id="editSessionActive"
+                  style={{ width: "18px", height: "18px", accentColor: "var(--primary)", cursor: "pointer" }}
+                  checked={editSessionActive}
+                  onChange={(e) => setEditSessionActive(e.target.checked)}
+                />
+                <label htmlFor="editSessionActive" style={{ fontSize: "13px", color: "#cbd5e1", fontWeight: "600", cursor: "pointer" }}>Is Session Active / Live?</label>
+              </div>
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: "12px" }}>
+              <button onClick={() => setEditSessionModal(null)} className="home-btn" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid var(--border)", color: "#cbd5e1", width: "auto", margin: 0, padding: "10px 20px" }}>Cancel</button>
+              <button onClick={handleSaveSessionEdit} className="home-btn primary" style={{ width: "auto", margin: 0, padding: "10px 20px" }}>Save Changes</button>
             </div>
           </div>
         </div>

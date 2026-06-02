@@ -36,16 +36,42 @@ const PORT           = process.env.PORT || 3001;
 // ─── AUTH MIDDLEWARE ──────────────────────────────────────────────────────────
 // Reads Bearer JWT from Authorization header, attaches req.user if valid.
 // Routes that call requireAuth will return 401 if the token is missing/invalid.
-const requireAuth = (req, res, next) => {
+const requireAuth = async (req, res, next) => {
   const header = req.headers.authorization || "";
   const token  = header.startsWith("Bearer ") ? header.slice(7) : null;
   if (!token) return res.status(401).json({ error: "Unauthorized" });
   try {
-    req.user = jwt.verify(token, JWT_SECRET);
+    const decoded = jwt.verify(token, JWT_SECRET);
+    if (mongoose.connection.readyState === 1) {
+      const dbUser = await User.findOne({ googleId: decoded.googleId });
+      if (dbUser) {
+        if (dbUser.isBanned) {
+          const reason = dbUser.banReason ? ` Reason: ${dbUser.banReason}` : "";
+          return res.status(403).json({ error: `You are permanently banned from ClassBoard.${reason}` });
+        }
+        if (dbUser.banExpiresAt && new Date(dbUser.banExpiresAt) > new Date()) {
+          const reason = dbUser.banReason ? ` Reason: ${dbUser.banReason}` : "";
+          const expires = new Date(dbUser.banExpiresAt).toLocaleString();
+          return res.status(403).json({ error: `You are temporarily banned until ${expires}.${reason}` });
+        }
+        req.user = dbUser;
+      } else {
+        req.user = decoded;
+      }
+    } else {
+      req.user = decoded;
+    }
     next();
   } catch {
     return res.status(401).json({ error: "Invalid token" });
   }
+};
+
+const requireAdmin = (req, res, next) => {
+  if (!req.user || req.user.role !== "admin") {
+    return res.status(403).json({ error: "Forbidden: Admin access required" });
+  }
+  next();
 };
 
 // Optional auth — attaches req.user if token present, never rejects
@@ -90,6 +116,18 @@ app.post("/api/auth/google", async (req, res) => {
     const { sub: googleId, email, name, picture } = payload;
     const role = ADMIN_EMAILS.includes(email.toLowerCase()) ? "admin" : "teacher";
     if (mongoose.connection.readyState === 1) {
+      const existingUser = await User.findOne({ googleId });
+      if (existingUser) {
+        if (existingUser.isBanned) {
+          const reason = existingUser.banReason ? ` Reason: ${existingUser.banReason}` : "";
+          return res.status(403).json({ error: `You are permanently banned from ClassBoard.${reason}` });
+        }
+        if (existingUser.banExpiresAt && new Date(existingUser.banExpiresAt) > new Date()) {
+          const reason = existingUser.banReason ? ` Reason: ${existingUser.banReason}` : "";
+          const expires = new Date(existingUser.banExpiresAt).toLocaleString();
+          return res.status(403).json({ error: `You are temporarily banned until ${expires}.${reason}` });
+        }
+      }
       await User.findOneAndUpdate(
         { googleId }, { email, name, picture, role },
         { upsert: true, new: true, setDefaultsOnInsert: true }
@@ -150,6 +188,18 @@ app.get("/api/auth/google/callback", async (req, res) => {
     const role = ADMIN_EMAILS.includes(email.toLowerCase()) ? "admin" : "teacher";
 
     if (mongoose.connection.readyState === 1) {
+      const existingUser = await User.findOne({ googleId });
+      if (existingUser) {
+        if (existingUser.isBanned) {
+          const reason = existingUser.banReason ? ` Reason: ${existingUser.banReason}` : "";
+          return res.redirect(`${FRONTEND_URL}?auth_error=${encodeURIComponent("You are permanently banned from ClassBoard." + reason)}`);
+        }
+        if (existingUser.banExpiresAt && new Date(existingUser.banExpiresAt) > new Date()) {
+          const reason = existingUser.banReason ? ` Reason: ${existingUser.banReason}` : "";
+          const expires = new Date(existingUser.banExpiresAt).toLocaleString();
+          return res.redirect(`${FRONTEND_URL}?auth_error=${encodeURIComponent("You are temporarily banned until " + expires + "." + reason)}`);
+        }
+      }
       await User.findOneAndUpdate(
         { googleId }, { email, name, picture, role },
         { upsert: true, new: true, setDefaultsOnInsert: true }
@@ -186,6 +236,18 @@ app.post("/api/auth/demo", async (req, res) => {
 
     // Upsert user in DB if available
     if (mongoose.connection.readyState === 1) {
+      const existingUser = await User.findOne({ googleId });
+      if (existingUser) {
+        if (existingUser.isBanned) {
+          const reason = existingUser.banReason ? ` Reason: ${existingUser.banReason}` : "";
+          return res.status(403).json({ error: `You are permanently banned from ClassBoard.${reason}` });
+        }
+        if (existingUser.banExpiresAt && new Date(existingUser.banExpiresAt) > new Date()) {
+          const reason = existingUser.banReason ? ` Reason: ${existingUser.banReason}` : "";
+          const expires = new Date(existingUser.banExpiresAt).toLocaleString();
+          return res.status(403).json({ error: `You are temporarily banned until ${expires}.${reason}` });
+        }
+      }
       await User.findOneAndUpdate(
         { googleId },
         { email: normalEmail, name, picture: "", role },
@@ -206,6 +268,146 @@ app.post("/api/auth/demo", async (req, res) => {
   } catch (err) {
     console.error("demo auth error:", err.message);
     res.status(500).json({ error: "Login failed" });
+  }
+});
+
+
+// ─── ADMIN API ROUTES ──────────────────────────────────────────────────────────
+
+// Get all registered teachers/users
+app.get("/api/admin/teachers", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(503).json({ error: "Database not connected" });
+    }
+    const users = await User.find({}).sort({ createdAt: -1 });
+    res.json(users);
+  } catch (err) {
+    console.error("Fetch teachers error:", err.message);
+    res.status(500).json({ error: "Failed to fetch teachers" });
+  }
+});
+
+// Ban/Unban teacher
+app.post("/api/admin/teachers/:googleId/ban", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { googleId } = req.params;
+    const { isBanned, banExpiresAt, banReason } = req.body;
+    
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(503).json({ error: "Database not connected" });
+    }
+    
+    // Prevent admin self-banning
+    if (googleId === req.user.googleId) {
+      return res.status(400).json({ error: "Cannot ban your own account" });
+    }
+
+    const updatedUser = await User.findOneAndUpdate(
+      { googleId },
+      { 
+        isBanned: !!isBanned, 
+        banExpiresAt: banExpiresAt ? new Date(banExpiresAt) : null,
+        banReason: banReason || ""
+      },
+      { new: true }
+    );
+
+    if (!updatedUser) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    res.json({ message: "User status updated successfully", user: updatedUser });
+  } catch (err) {
+    console.error("Ban teacher error:", err.message);
+    res.status(500).json({ error: "Failed to update user status" });
+  }
+});
+
+// Delete teacher account
+app.delete("/api/admin/teachers/:googleId", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { googleId } = req.params;
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(503).json({ error: "Database not connected" });
+    }
+    
+    if (googleId === req.user.googleId) {
+      return res.status(400).json({ error: "Cannot delete your own account" });
+    }
+
+    const deletedUser = await User.findOneAndDelete({ googleId });
+    if (!deletedUser) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    res.json({ message: "User account deleted successfully" });
+  } catch (err) {
+    console.error("Delete teacher error:", err.message);
+    res.status(500).json({ error: "Failed to delete teacher account" });
+  }
+});
+
+// Edit session metadata
+app.put("/api/admin/sessions/:code", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { code } = req.params;
+    const { title, active, folder } = req.body;
+    
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(503).json({ error: "Database not connected" });
+    }
+
+    const session = await Session.findOneAndUpdate(
+      { code: code.toUpperCase() },
+      { title, active, folder },
+      { new: true }
+    );
+
+    if (!session) {
+      return res.status(404).json({ error: "Session not found" });
+    }
+
+    // Update in-memory room active status / title if currently live
+    const room = rooms[code.toUpperCase()];
+    if (room) {
+      if (title !== undefined) room.title = title;
+      if (active === false) {
+        room.endedAt = new Date();
+      }
+    }
+
+    res.json({ message: "Session updated successfully", session });
+  } catch (err) {
+    console.error("Edit session error:", err.message);
+    res.status(500).json({ error: "Failed to update session" });
+  }
+});
+
+// Delete session and its snapshot
+app.delete("/api/admin/sessions/:code", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { code } = req.params;
+    const cleanCode = code.toUpperCase();
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(503).json({ error: "Database not connected" });
+    }
+
+    const deletedSession = await Session.findOneAndDelete({ code: cleanCode });
+    if (!deletedSession) {
+      return res.status(404).json({ error: "Session not found" });
+    }
+
+    // Delete snapshots
+    await Snapshot.deleteMany({ sessionCode: cleanCode });
+
+    // Remove from in-memory rooms if live
+    delete rooms[cleanCode];
+
+    res.json({ message: "Session and snapshots deleted successfully" });
+  } catch (err) {
+    console.error("Delete session error:", err.message);
+    res.status(500).json({ error: "Failed to delete session" });
   }
 });
 

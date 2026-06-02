@@ -64,6 +64,9 @@ const userSchema = new mongoose.Schema(
     name:     { type: String, required: true },
     picture:  { type: String, default: '' },
     role:     { type: String, enum: ['admin','teacher','student'], default: 'teacher' },
+    isBanned: { type: Boolean, default: false },
+    banExpiresAt: { type: Date, default: null },
+    banReason: { type: String, default: '' },
     createdAt:{ type: Date, default: Date.now },
   },
   { versionKey: false }
