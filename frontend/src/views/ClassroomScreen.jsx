@@ -694,10 +694,18 @@ export default function ClassroomScreen() {
 
     e.preventDefault();
 
-    // Get ALL intermediate points the browser may have coalesced (critical for iPad)
-    const events = (e.getCoalescedEvents && e.getCoalescedEvents().length > 0)
-      ? e.getCoalescedEvents()
-      : [e];
+    // Safely retrieve intermediate coalesced points to prevent missed strokes on fast writing
+    let events = [e];
+    if (typeof e.getCoalescedEvents === 'function') {
+      try {
+        const coalesced = e.getCoalescedEvents();
+        if (coalesced && coalesced.length > 0) {
+          events = coalesced;
+        }
+      } catch (err) {
+        console.warn("Failed to get coalesced events:", err);
+      }
+    }
 
     for (const coalescedEvent of events) {
       processMoveEvent(coalescedEvent);
@@ -911,6 +919,26 @@ export default function ClassroomScreen() {
         }
       }
     } else if (wasPainting) {
+      // Pen / highlighter — flush the remaining stabilizer segment to the final touch/release point!
+      if (tool === TOOLS.PEN || tool === TOOLS.HIGHLIGHTER) {
+        ctxRef.current.setLineDash([]);
+        ctxRef.current.lineCap   = 'round';
+        ctxRef.current.lineJoin  = 'round';
+        ctxRef.current.strokeStyle = color;
+        ctxRef.current.lineWidth = stroke;
+        ctxRef.current.globalAlpha = tool === TOOLS.HIGHLIGHTER ? 0.3 : 1.0;
+
+        const from = lastMid.current || smoothPos.current;
+        ctxRef.current.beginPath();
+        ctxRef.current.moveTo(from.x, from.y);
+        ctxRef.current.lineTo(pos.x, pos.y);
+        ctxRef.current.stroke();
+        ctxRef.current.globalAlpha = 1.0;
+
+        // Broadcast the final flushed segment
+        emitStroke(from.x, from.y, pos.x, pos.y, tool);
+      }
+
       // Pen / eraser / highlighter — strokes already emitted per-segment via emitStroke.
       // Emit full canvas state deferred so it doesn't block the next pointerdown.
       setTimeout(() => emitCanvas(), 0);
@@ -1835,6 +1863,7 @@ return (
                 onPointerDown={onDown}
                 onPointerMove={onMove}
                 onPointerUp={onUp}
+                onPointerCancel={onUp}
               />
 
               {/* Real-time remote shape previews */}
