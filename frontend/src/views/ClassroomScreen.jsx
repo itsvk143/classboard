@@ -99,6 +99,7 @@ export default function ClassroomScreen() {
   const [stroke, setStroke] = useState(4);
   const isPainting = useRef(false);
   const lastPos = useRef(null);
+  const smoothPos = useRef(null); // tracks stabilized position for calligraphic smoothness
   const lastMid = useRef(null); // tracks last midpoint for continuous smooth curves
   const startPos = useRef(null);
   const snapshotRef = useRef(null); // for straight line preview
@@ -608,6 +609,7 @@ export default function ClassroomScreen() {
     }
 
     const pos = getPos(e);
+    smoothPos.current = pos; // initialize stabilized brush position
 
     // Object Eraser: flood-fill on click
     if (tool === TOOLS.OBJ_ERASER) {
@@ -775,22 +777,30 @@ export default function ClassroomScreen() {
       ctxRef.current.lineWidth = stroke;
       ctxRef.current.globalAlpha = tool === TOOLS.HIGHLIGHTER ? 0.3 : 1.0;
 
-      // Proper midpoint-smoothing: draw from lastMid → currentMid using lastPos
-      // as the quadratic control point. Consecutive segments share endpoints
-      // (both end/start at a midpoint) → perfectly continuous, zero gaps.
+      // Premium Stabilizer Algorithm (Exponential Moving Average)
+      // Filters high-frequency mouse/stylus jitter for highly stable, smooth, calligraphic curves.
+      const smoothingFactor = 0.45;
+      const nextSmoothX = smoothPos.current.x + (pos.x - smoothPos.current.x) * smoothingFactor;
+      const nextSmoothY = smoothPos.current.y + (pos.y - smoothPos.current.y) * smoothingFactor;
+      const nextSmoothPos = { x: nextSmoothX, y: nextSmoothY };
+
+      // Calculate midpoint between last smoothed position and current smoothed position
       const currentMid = {
-        x: (lastPos.current.x + pos.x) / 2,
-        y: (lastPos.current.y + pos.y) / 2,
+        x: (smoothPos.current.x + nextSmoothPos.x) / 2,
+        y: (smoothPos.current.y + nextSmoothPos.y) / 2,
       };
-      const from = lastMid.current || lastPos.current;
+      const from = lastMid.current || smoothPos.current;
       ctxRef.current.beginPath();
       ctxRef.current.moveTo(from.x, from.y);
-      ctxRef.current.quadraticCurveTo(lastPos.current.x, lastPos.current.y, currentMid.x, currentMid.y);
+      ctxRef.current.quadraticCurveTo(smoothPos.current.x, smoothPos.current.y, currentMid.x, currentMid.y);
       ctxRef.current.stroke();
       ctxRef.current.globalAlpha = 1.0;
 
-      lastMid.current = currentMid; // advance for next segment
-      emitStroke(lastPos.current.x, lastPos.current.y, pos.x, pos.y, tool);
+      // Broadcast the exact smoothed segment to other participants
+      emitStroke(smoothPos.current.x, smoothPos.current.y, nextSmoothPos.x, nextSmoothPos.y, tool);
+
+      lastMid.current = currentMid;
+      smoothPos.current = nextSmoothPos;
     } else if (tool === TOOLS.ERASER) {
       ctxRef.current.setLineDash([]);
       ctxRef.current.lineCap   = 'round';
