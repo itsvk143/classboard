@@ -11,9 +11,25 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { io } from "socket.io-client";
 import { SOCKET_ENDPOINT } from "../config";
 import { jsPDF } from "jspdf";
+import { getStroke } from "perfect-freehand";
 import "../App.css";
 
 const ENDPOINT = SOCKET_ENDPOINT;
+
+const drawStroke = (ctx, strokePoints, color) => {
+  if (!strokePoints || strokePoints.length === 0) return;
+  ctx.beginPath();
+  ctx.fillStyle = color;
+  ctx.moveTo(strokePoints[0][0], strokePoints[0][1]);
+  for (let i = 1; i < strokePoints.length; i++) {
+    const nextPoint = strokePoints[(i + 1) % strokePoints.length];
+    const midX = (strokePoints[i][0] + nextPoint[0]) / 2;
+    const midY = (strokePoints[i][1] + nextPoint[1]) / 2;
+    ctx.quadraticCurveTo(strokePoints[i][0], strokePoints[i][1], midX, midY);
+  }
+  ctx.closePath();
+  ctx.fill();
+};
 const COLORS = [
   "#000000", "#ffffff", "#ef4444", "#3b82f6", "#22c55e", "#ec4899",
 ];
@@ -103,6 +119,7 @@ export default function ClassroomScreen() {
   const lastMid = useRef(null); // tracks last midpoint for continuous smooth curves
   const startPos = useRef(null);
   const snapshotRef = useRef(null); // for straight line preview
+  const currentPointsRef = useRef([]);
   const [lasers,          setLasers]          = useState({});
   const [remoteDrawers,   setRemoteDrawers]   = useState({}); // { socketId: { name, x, y } }
   const drawCursorThrottle = useRef(0); // ms timestamp of last drawing-cursor emit
@@ -667,6 +684,9 @@ export default function ClassroomScreen() {
 
     if (isShapeTool(tool)) {
       snapshotRef.current = ctxRef.current.getImageData(0, 0, canvasRef.current.width, canvasRef.current.height);
+    } else if (tool === TOOLS.PEN || tool === TOOLS.HIGHLIGHTER) {
+      snapshotRef.current = ctxRef.current.getImageData(0, 0, canvasRef.current.width, canvasRef.current.height);
+      currentPointsRef.current = [[pos.x, pos.y, e.pressure || 0.5]];
     } else {
       ctxRef.current.setLineDash([]);
       ctxRef.current.lineCap  = 'round';
@@ -778,36 +798,30 @@ export default function ClassroomScreen() {
       ctxRef.current.putImageData(snapshotRef.current, 0, 0);
       drawShape(ctxRef.current, tool, startPos.current, pos, color, stroke);
     } else if (tool === TOOLS.PEN || tool === TOOLS.HIGHLIGHTER) {
+      currentPointsRef.current.push([pos.x, pos.y, e.pressure || 0.5]);
+      if (snapshotRef.current) {
+        ctxRef.current.putImageData(snapshotRef.current, 0, 0);
+      }
+
       ctxRef.current.setLineDash([]);
-      ctxRef.current.lineCap   = 'round';
-      ctxRef.current.lineJoin  = 'round';
-      ctxRef.current.strokeStyle = color;
-      ctxRef.current.lineWidth = stroke;
       ctxRef.current.globalAlpha = tool === TOOLS.HIGHLIGHTER ? 0.3 : 1.0;
 
-      // Premium Stabilizer Algorithm (Exponential Moving Average)
-      // Filters high-frequency mouse/stylus jitter for highly stable, smooth, calligraphic curves.
-      const smoothingFactor = 0.45;
-      const nextSmoothX = smoothPos.current.x + (pos.x - smoothPos.current.x) * smoothingFactor;
-      const nextSmoothY = smoothPos.current.y + (pos.y - smoothPos.current.y) * smoothingFactor;
-      const nextSmoothPos = { x: nextSmoothX, y: nextSmoothY };
+      const strokePoints = getStroke(currentPointsRef.current, {
+        size: stroke,
+        thinning: 0.5,
+        smoothing: 0.5,
+        streamline: 0.5,
+      });
 
-      // Calculate midpoint between last smoothed position and current smoothed position
-      const currentMid = {
-        x: (smoothPos.current.x + nextSmoothPos.x) / 2,
-        y: (smoothPos.current.y + nextSmoothPos.y) / 2,
-      };
-      const from = lastMid.current || smoothPos.current;
-      ctxRef.current.beginPath();
-      ctxRef.current.moveTo(from.x, from.y);
-      ctxRef.current.quadraticCurveTo(smoothPos.current.x, smoothPos.current.y, currentMid.x, currentMid.y);
-      ctxRef.current.stroke();
+      drawStroke(ctxRef.current, strokePoints, color);
       ctxRef.current.globalAlpha = 1.0;
 
-      // Broadcast the exact smoothed segment to other participants
-      emitStroke(smoothPos.current.x, smoothPos.current.y, nextSmoothPos.x, nextSmoothPos.y, tool);
-
-      lastMid.current = currentMid;
+      // Broadcast the exact smoothed segment to other participants so they see a real-time segment preview
+      const nextSmoothX = smoothPos.current ? smoothPos.current.x + (pos.x - smoothPos.current.x) * 0.45 : pos.x;
+      const nextSmoothY = smoothPos.current ? smoothPos.current.y + (pos.y - smoothPos.current.y) * 0.45 : pos.y;
+      const nextSmoothPos = { x: nextSmoothX, y: nextSmoothY };
+      const from = smoothPos.current || pos;
+      emitStroke(from.x, from.y, nextSmoothPos.x, nextSmoothPos.y, tool);
       smoothPos.current = nextSmoothPos;
     } else if (tool === TOOLS.ERASER) {
       ctxRef.current.setLineDash([]);
@@ -919,23 +933,25 @@ export default function ClassroomScreen() {
         }
       }
     } else if (wasPainting) {
-      // Pen / highlighter — flush the remaining stabilizer segment to the final touch/release point!
+      // Pen / highlighter — final perfect-freehand stroke render
       if (tool === TOOLS.PEN || tool === TOOLS.HIGHLIGHTER) {
+        if (snapshotRef.current) {
+          ctxRef.current.putImageData(snapshotRef.current, 0, 0);
+        }
         ctxRef.current.setLineDash([]);
-        ctxRef.current.lineCap   = 'round';
-        ctxRef.current.lineJoin  = 'round';
-        ctxRef.current.strokeStyle = color;
-        ctxRef.current.lineWidth = stroke;
         ctxRef.current.globalAlpha = tool === TOOLS.HIGHLIGHTER ? 0.3 : 1.0;
 
-        const from = lastMid.current || smoothPos.current;
-        ctxRef.current.beginPath();
-        ctxRef.current.moveTo(from.x, from.y);
-        ctxRef.current.lineTo(pos.x, pos.y);
-        ctxRef.current.stroke();
+        const strokePoints = getStroke(currentPointsRef.current, {
+          size: stroke,
+          thinning: 0.5,
+          smoothing: 0.5,
+          streamline: 0.5,
+        });
+
+        drawStroke(ctxRef.current, strokePoints, color);
         ctxRef.current.globalAlpha = 1.0;
 
-        // Broadcast the final flushed segment
+        const from = smoothPos.current || pos;
         emitStroke(from.x, from.y, pos.x, pos.y, tool);
       }
 

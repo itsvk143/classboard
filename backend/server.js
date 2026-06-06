@@ -821,12 +821,14 @@ io.on("connection", (socket) => {
     socket.to(code).emit("canvas-update", { dataURL, senderId: socket.id });
   });
 
-  socket.on("draw-stroke", ({ code, x0, y0, x1, y1, color, stroke, tool }) => {
-    socket.to(code).emit("draw-stroke", { x0, y0, x1, y1, color, stroke, tool });
+  socket.on("draw-stroke", (payload) => {
+    const { code } = payload;
+    socket.to(code).emit("draw-stroke", payload);
   });
 
-  socket.on("draw-shape", ({ code, tool, start, end, color, stroke, isPreview }) => {
-    socket.to(code).emit("draw-shape", { tool, start, end, color, stroke, isPreview, senderId: socket.id });
+  socket.on("draw-shape", (payload) => {
+    const { code } = payload;
+    socket.to(code).emit("draw-shape", { ...payload, senderId: socket.id });
   });
 
   // ── Laser Pointer ──────────────────────────────────────────────────────────
